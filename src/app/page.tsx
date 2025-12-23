@@ -1,66 +1,97 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client'
 
-export default function Home() {
+import Link from 'next/link'
+
+export default function HomePage() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'linear-gradient(to bottom right, #f3f4f6, #e5e7eb)',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        padding: '3rem',
+        borderRadius: '1rem',
+        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+        textAlign: 'center',
+        maxWidth: '500px',
+        width: '90%'
+      }}>
+        <h1 style={{
+          fontSize: '2.5rem',
+          fontWeight: '800',
+          color: '#111827',
+          marginBottom: '1rem',
+          letterSpacing: '-0.025em'
+        }}>
+          Staff Scheduler
+        </h1>
+        <p style={{
+          color: '#6b7280',
+          marginBottom: '2.5rem',
+          fontSize: '1.125rem',
+          lineHeight: '1.75'
+        }}>
+          Welcome to the automated scheduling system. Please select your portal below.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <Link
+            href="/schedule"
+            style={{
+              display: 'block',
+              padding: '1rem 2rem',
+              backgroundColor: '#2563eb',
+              color: 'white',
+              borderRadius: '0.5rem',
+              textDecoration: 'none',
+              fontWeight: '600',
+              fontSize: '1.125rem',
+              transition: 'background-color 0.2s',
+              boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2)'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
           >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            View Schedule
+          </Link>
+
+          <Link
+            href="/admin"
+            style={{
+              display: 'block',
+              padding: '1rem 2rem',
+              backgroundColor: 'white',
+              color: '#4b5563',
+              borderRadius: '0.5rem',
+              textDecoration: 'none',
+              fontWeight: '600',
+              fontSize: '1.125rem',
+              border: '1px solid #e5e7eb',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#f9fafb'
+              e.currentTarget.style.borderColor = '#d1d5db'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'white'
+              e.currentTarget.style.borderColor = '#e5e7eb'
+            }}
           >
-            Documentation
-          </a>
+            Admin Login
+          </Link>
         </div>
-      </main>
+      </div>
+
+      <div style={{ marginTop: '2rem', color: '#9ca3af', fontSize: '0.875rem' }}>
+        &copy; {new Date().getFullYear()} Staff Scheduler System
+      </div>
     </div>
-  );
+  )
 }

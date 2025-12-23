@@ -1,0 +1,93 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               Int            @id @default(autoincrement())
+  name             String
+  email            String         @unique
+  type             String         // "FULL_TIME" or "PART_TIME"
+  category         String         @default("Front Desk") // "Management", "Shift Manager", "Cafe", "Shop", "Front Desk"
+  max_weekly_hours Int            @default(40)
+  auto_schedule    Boolean        @default(true)
+  skills           UserSkill[]
+  baseRules        UserBaseRule[]
+  shifts           Shift[]
+  leave            Leave[]
+}
+
+model Leave {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  startDate String   // YYYY-MM-DD
+  endDate   String   // YYYY-MM-DD
+  reason    String?
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Department {
+  id             Int             @id @default(autoincrement())
+  name           String
+  color_code     String
+  userSkills     UserSkill[]
+  shiftTemplates ShiftTemplate[]
+  shifts         Shift[]
+}
+
+model UserSkill {
+  user_id       Int
+  department_id Int
+  user          User       @relation(fields: [user_id], references: [id])
+  department    Department @relation(fields: [department_id], references: [id])
+
+  @@id([user_id, department_id])
+}
+
+model OperatingDay {
+  id         Int      @id @default(autoincrement())
+  date       String   @unique // Format: "YYYY-MM-DD"
+  status     String   // "OPEN", "CLOSED", "HOLIDAY"
+  open_time  String?  // Format: "HH:mm"
+  close_time String?  // Format: "HH:mm"
+  event_note String?
+}
+
+model ShiftTemplate {
+  id            Int            @id @default(autoincrement())
+  name          String
+  start_time    String         // Format: "HH:mm"
+  end_time      String         // Format: "HH:mm"
+  department_id Int
+  department    Department     @relation(fields: [department_id], references: [id])
+  baseRules     UserBaseRule[]
+}
+
+model UserBaseRule {
+  id              Int           @id @default(autoincrement())
+  user_id         Int
+  template_id     Int
+  day_of_week     Int           // 0=Sunday, 1=Monday, etc.
+  recurrence_type String        // "WEEKLY", "BIWEEKLY_A", "BIWEEKLY_B"
+  user            User          @relation(fields: [user_id], references: [id])
+  template        ShiftTemplate @relation(fields: [template_id], references: [id])
+}
+
+model Shift {
+  id            Int        @id @default(autoincrement())
+  user_id       Int
+  department_id Int
+  date          String     // Format: "YYYY-MM-DD"
+  start_time    String     // Format: "HH:mm"
+  end_time      String     // Format: "HH:mm"
+  is_smod       Boolean    @default(false)
+  user          User       @relation(fields: [user_id], references: [id])
+  department    Department @relation(fields: [department_id], references: [id])
+}
