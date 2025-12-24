@@ -10,10 +10,11 @@ async function handleAction(leaveId: number, status: 'APPROVED' | 'DECLINED') {
     await updateLeaveStatus(leaveId, status)
 }
 
-export default async function LeavePage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-    const { tab } = await searchParams
+export default async function LeavePage({ searchParams }: { searchParams: Promise<{ tab?: string, type?: string }> }) {
+    const { tab, type } = await searchParams
     const currentTab = tab || 'PENDING'
-    const requests = await getLeaveRequests(currentTab)
+    const currentType = type || ''
+    const requests = await getLeaveRequests(currentTab, currentType)
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -27,7 +28,7 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
                 <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Leave Management</h1>
             </div>
 
-            {/* Tabs */}
+            {/* Main Tabs (Status) */}
             <div style={{
                 display: 'flex',
                 gap: '1rem',
@@ -37,7 +38,7 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
                 {['PENDING', 'APPROVED', 'DECLINED'].map(status => (
                     <a
                         key={status}
-                        href={`/admin/leave?tab=${status}`}
+                        href={`/admin/leave?tab=${status}${currentType ? `&type=${currentType}` : ''}`}
                         style={{
                             padding: '0.5rem 1rem',
                             borderBottom: currentTab === status ? '2px solid var(--primary)' : '2px solid transparent',
@@ -51,6 +52,35 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
                 ))}
             </div>
 
+            {/* Sub Filters (Type) */}
+            <div style={{
+                display: 'flex',
+                gap: '0.5rem',
+                marginBottom: '1rem'
+            }}>
+                {[
+                    { label: 'All Types', value: '' },
+                    { label: 'Paid', value: 'PAID' },
+                    { label: 'Unpaid', value: 'UNPAID' }
+                ].map(t => (
+                    <a
+                        key={t.value}
+                        href={`/admin/leave?tab=${currentTab}${t.value ? `&type=${t.value}` : ''}`}
+                        style={{
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '1rem',
+                            fontSize: '0.875rem',
+                            textDecoration: 'none',
+                            backgroundColor: currentType === t.value ? 'var(--primary)' : 'var(--muted)',
+                            color: currentType === t.value ? 'white' : 'var(--foreground)',
+                            border: '1px solid var(--border)'
+                        }}
+                    >
+                        {t.label}
+                    </a>
+                ))}
+            </div>
+
             {/* List */}
             <div className="card" style={{ flex: 1, overflow: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -58,6 +88,7 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
                         <tr style={{ background: 'var(--muted)', textAlign: 'left' }}>
                             <th style={{ padding: '0.75rem', fontWeight: '600' }}>Staff</th>
                             <th style={{ padding: '0.75rem', fontWeight: '600' }}>Dates</th>
+                            <th style={{ padding: '0.75rem', fontWeight: '600' }}>Type</th>
                             <th style={{ padding: '0.75rem', fontWeight: '600' }}>Reason</th>
                             <th style={{ padding: '0.75rem', fontWeight: '600', textAlign: 'right' }}>Actions</th>
                         </tr>
@@ -65,7 +96,7 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
                     <tbody>
                         {requests.length === 0 ? (
                             <tr>
-                                <td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted-foreground)' }}>
+                                <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted-foreground)' }}>
                                     No {currentTab.toLowerCase()} requests found.
                                 </td>
                             </tr>
@@ -78,6 +109,18 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
                                         <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
                                             {req.startDate === req.endDate ? '1 day' : 'Range'}
                                         </div>
+                                    </td>
+                                    <td style={{ padding: '0.75rem' }}>
+                                        <span style={{
+                                            fontSize: '0.75rem',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            backgroundColor: req.leaveType === 'PAID' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(107, 114, 128, 0.1)',
+                                            color: req.leaveType === 'PAID' ? '#3b82f6' : '#6b7280',
+                                            fontWeight: '600'
+                                        }}>
+                                            {req.leaveType}
+                                        </span>
                                     </td>
                                     <td style={{ padding: '0.75rem' }}>{req.reason || '-'}</td>
                                     <td style={{ padding: '0.75rem', textAlign: 'right' }}>

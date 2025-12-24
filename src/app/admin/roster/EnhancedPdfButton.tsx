@@ -3,6 +3,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { format, parseISO, eachDayOfInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth } from 'date-fns'
+import { isPublicHoliday } from '@/lib/holidays'
 
 type User = {
     id: number
@@ -21,6 +22,10 @@ type Shift = {
     department: {
         name: string
         color_code: string
+    }
+    user: {
+        name: string
+        category?: string
     }
 }
 
@@ -51,11 +56,16 @@ export default function EnhancedPdfButton({
             currentWeekStart = addDays(currentWeekStart, 7)
         }
 
-        let finalY = 15 // Start Y position
+        let finalY = 25 // Start Y position lower to make space for header
 
-        // Title
-        doc.setFontSize(14)
-        doc.text(`Roster: ${format(monthDate, 'MMMM yyyy')}`, 14, 10)
+        // Full Header
+        doc.setFontSize(18)
+        doc.setTextColor(0, 0, 0)
+        doc.text('CityROCK Johannesburg', 14, 12)
+        doc.setFontSize(12)
+        doc.text(`Staff Schedule: ${format(monthDate, 'MMMM yyyy')}`, 14, 18)
+        doc.setLineWidth(0.5)
+        doc.line(14, 20, 283, 20) // Header separator
 
         weeks.forEach((weekDays, weekIndex) => {
             // Check if we need a new page
@@ -72,14 +82,28 @@ export default function EnhancedPdfButton({
             // 2. Day Name Row
             const dayNameRow = ['', ...weekDays.map(d => format(d, 'EEEE'))]
 
-            // 3. SMOD Row (Body Row 0)
+            // 3. MOD Row
+            const modRow = ['MOD']
+            weekDays.forEach(day => {
+                const dateStr = format(day, 'yyyy-MM-dd')
+                const modShifts = shifts.filter(s => s.date === dateStr && s.department.name === 'Management (MOD)')
+                if (modShifts.length > 0) {
+                    const uniqueNames = Array.from(new Set(modShifts.map(s => s.user.name)))
+                    modRow.push(uniqueNames.join('/'))
+                } else {
+                    modRow.push('')
+                }
+            })
+            body.push(modRow)
+
+            // 4. SMOD Row
             const smodRow = ['SMOD']
             weekDays.forEach(day => {
                 const dateStr = format(day, 'yyyy-MM-dd')
-                const smodShift = shifts.find(s => s.date === dateStr && s.is_smod)
-                if (smodShift) {
-                    const user = users.find(u => u.id === smodShift.user_id)
-                    smodRow.push(user?.name || '')
+                const smodShifts = shifts.filter(s => s.date === dateStr && (s.department.name === 'Shift Manager (SMOD)' || s.is_smod))
+                if (smodShifts.length > 0) {
+                    const uniqueNames = Array.from(new Set(smodShifts.map(s => s.user.name)))
+                    smodRow.push(uniqueNames.join('/'))
                 } else {
                     smodRow.push('')
                 }
@@ -173,6 +197,8 @@ export default function EnhancedPdfButton({
                     const colIndex = data.column.index
                     const rawRow = data.row.raw as string[]
                     const section = data.section
+                    const date = colIndex > 0 ? weekDays[colIndex - 1] : null
+                    const isHoliday = date ? isPublicHoliday(format(date, 'yyyy-MM-dd')) : false
 
                     // --- Header Styling ---
                     if (section === 'head') {
@@ -182,7 +208,11 @@ export default function EnhancedPdfButton({
                                 data.cell.styles.fillColor = [68, 68, 68] // Dark Grey
                                 data.cell.styles.textColor = [255, 255, 255]
                             } else {
-                                data.cell.styles.fillColor = [0, 0, 0] // Black
+                                if (isHoliday) {
+                                    data.cell.styles.fillColor = [185, 28, 28] // Holiday Red
+                                } else {
+                                    data.cell.styles.fillColor = [0, 0, 0] // Black
+                                }
                                 data.cell.styles.textColor = [255, 255, 255]
                                 data.cell.styles.fontStyle = 'bold'
                             }
@@ -190,7 +220,11 @@ export default function EnhancedPdfButton({
                         // Day Name Row (Row 1)
                         if (rowIndex === 1) {
                             if (colIndex > 0) {
-                                data.cell.styles.fillColor = [0, 0, 0] // Black
+                                if (isHoliday) {
+                                    data.cell.styles.fillColor = [185, 28, 28] // Holiday Red
+                                } else {
+                                    data.cell.styles.fillColor = [0, 0, 0] // Black
+                                }
                                 data.cell.styles.textColor = [255, 255, 255]
                                 data.cell.styles.fontStyle = 'bold'
                             } else {
@@ -201,8 +235,8 @@ export default function EnhancedPdfButton({
 
                     // --- Body Styling ---
                     if (section === 'body') {
-                        // SMOD Row (Row 0)
-                        if (rowIndex === 0) {
+                        // MOD & SMOD Rows (Row 0 and 1)
+                        if (rowIndex === 0 || rowIndex === 1) {
                             data.cell.styles.fillColor = [204, 204, 204] // Light Grey
                             if (colIndex === 0) data.cell.styles.fontStyle = 'bold'
                         }
@@ -237,8 +271,7 @@ export default function EnhancedPdfButton({
                                 data.cell.styles.fontStyle = 'bold'
                             }
                             // Shift Columns
-                            else {
-                                const date = weekDays[colIndex - 1]
+                            else if (date) {
                                 const dateStr = format(date, 'yyyy-MM-dd')
                                 const userName = rawRow[0]
                                 const user = users.find(u => u.name === userName)
@@ -252,6 +285,8 @@ export default function EnhancedPdfButton({
                                         const b = parseInt(hex.substring(4, 6), 16)
                                         data.cell.styles.fillColor = [r, g, b]
                                         data.cell.styles.textColor = [255, 255, 255]
+                                    } else if (isHoliday) {
+                                        data.cell.styles.fillColor = [254, 242, 242] // Lighter red
                                     } else if (!isSameMonth(date, monthDate)) {
                                         data.cell.styles.fillColor = [238, 238, 238]
                                     }

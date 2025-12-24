@@ -221,42 +221,48 @@ export async function generateSchedule({ month }: SchedulerParams) {
         const isSmodFilled = !!existingSmodShift
 
         // Define Slots Needed based on Rules
-        // we use 'let' slotsNeeded so we can modify counts or push dynamically
-        const slotsNeeded: { deptId: number, count: number, start: string, end: string, isSmod?: boolean }[] = []
+        const slotsNeeded: { deptId: number, count: number, start: string, end: string, isSmod?: boolean, requiredType?: string }[] = []
 
-        // Cafe Rule (Daily)
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-        slotsNeeded.push({
-            deptId: CAFE_ID,
-            count: 1,
-            start: isWeekend ? '08:45' : '12:00',
-            end: isWeekend ? '17:30' : '21:30'
-        })
+        const isFriday = dayOfWeek === 5
 
         if (isCompDay) {
+            // ... (keep comp day logic simple for now if it ever triggers)
             slotsNeeded.push({ deptId: SHOP_ID, count: 1, start: '09:00', end: '17:00' })
             if (!isSmodFilled) slotsNeeded.push({ deptId: SMOD_ID, count: 1, start: '08:30', end: '17:30', isSmod: true })
             slotsNeeded.push({ deptId: FD_ID, count: 5, start: '09:00', end: '17:00' })
+            slotsNeeded.push({ deptId: CAFE_ID, count: 1, start: '09:00', end: '17:00' })
         }
         else if (isWeekend) { // Sat + Sun
-            slotsNeeded.push({ deptId: SHOP_ID, count: 1, start: '09:00', end: '17:00' })
-            if (!isSmodFilled) slotsNeeded.push({ deptId: SMOD_ID, count: 1, start: '08:30', end: '17:30', isSmod: true })
-            slotsNeeded.push({ deptId: FD_ID, count: 4, start: '09:00', end: '17:00' })
+            // Shift Managers: 08:30-18:00
+            if (!isSmodFilled) slotsNeeded.push({ deptId: SMOD_ID, count: 1, start: '08:30', end: '18:00', isSmod: true })
+            // FD: 08:45-18:00
+            slotsNeeded.push({ deptId: FD_ID, count: 4, start: '08:45', end: '18:00' })
+            // Shop: 08:45-18:00
+            slotsNeeded.push({ deptId: SHOP_ID, count: 1, start: '08:45', end: '18:00' })
+            // Cafe: 08:45-17:30
+            slotsNeeded.push({ deptId: CAFE_ID, count: 1, start: '08:45', end: '17:30' })
         }
-        else if (dayOfWeek === 1 || dayOfWeek === 3) { // Mon + Wed
-            slotsNeeded.push({ deptId: SHOP_ID, count: 1, start: '17:00', end: '22:00' })
-            if (!isSmodFilled) slotsNeeded.push({ deptId: SMOD_ID, count: 1, start: '16:30', end: '22:30', isSmod: true })
-            slotsNeeded.push({ deptId: FD_ID, count: 2, start: '17:00', end: '22:00' })
-        }
-        else if (dayOfWeek === 2 || dayOfWeek === 4) { // Tue + Thu
-            slotsNeeded.push({ deptId: SHOP_ID, count: 1, start: '17:00', end: '22:00' })
-            if (!isSmodFilled) slotsNeeded.push({ deptId: SMOD_ID, count: 1, start: '16:30', end: '22:30', isSmod: true })
-            slotsNeeded.push({ deptId: FD_ID, count: 2, start: '17:00', end: '22:00' })
-            slotsNeeded.push({ deptId: FD_ID, count: 1, start: '17:00', end: '21:00' })
-        }
-        else if (dayOfWeek === 5) { // Fri
-            slotsNeeded.push({ deptId: FD_ID, count: 1, start: '12:00', end: '15:00' })
-            slotsNeeded.push({ deptId: FD_ID, count: 1, start: '14:00', end: '18:00' })
+        else { // Weekdays (Mon-Fri)
+            // --- Full Time Slots ---
+            // Front Desk: 08:30-17:00 (18:00 Fri)
+            slotsNeeded.push({ deptId: FD_ID, count: 3, start: '08:30', end: isFriday ? '18:00' : '17:00', requiredType: 'FULL_TIME' })
+            // Shop: 08:45-17:00 (18:00 Fri)
+            slotsNeeded.push({ deptId: SHOP_ID, count: 1, start: '08:45', end: isFriday ? '18:00' : '17:00', requiredType: 'FULL_TIME' })
+            // Cafe: 12:00-21:30 (18:00 Fri)
+            slotsNeeded.push({ deptId: CAFE_ID, count: 1, start: '12:00', end: isFriday ? '18:00' : '21:30', requiredType: 'FULL_TIME' })
+
+            // --- Part Time Slots (Not on Fridays as we close at 18:00) ---
+            if (!isFriday) {
+                // Shift Managers: 16:30-22:00
+                if (!isSmodFilled) slotsNeeded.push({ deptId: SMOD_ID, count: 1, start: '16:30', end: '22:00', isSmod: true, requiredType: 'PART_TIME' })
+                // Front Desk: 16:00-22:00
+                slotsNeeded.push({ deptId: FD_ID, count: 2, start: '16:00', end: '22:00', requiredType: 'PART_TIME' })
+                // Cafe: 13:30-21:30
+                slotsNeeded.push({ deptId: CAFE_ID, count: 1, start: '13:30', end: '21:30', requiredType: 'PART_TIME' })
+                // Shop: 16:45-22:00
+                slotsNeeded.push({ deptId: SHOP_ID, count: 1, start: '16:45', end: '22:00', requiredType: 'PART_TIME' })
+            }
         }
 
         // Fill Slots
@@ -302,11 +308,12 @@ export async function generateSchedule({ month }: SchedulerParams) {
         for (const slot of slotsNeeded) {
             // Check existing shifts for this department
             // We need to fulfill 'slot.count'.
-            // Matches if DeptID matches AND Overlaps AND not claimed.
+            // Matches if DeptID matches AND Overlaps AND not claimed AND matches requiredType (if any).
             const matchingExisting = dailyExistingShifts.filter((s: any) =>
                 s.department_id === slot.deptId &&
                 !claimedShiftIds.has(s.id) &&
-                overlaps(s.start_time, s.end_time, slot.start, slot.end)
+                overlaps(s.start_time, s.end_time, slot.start, slot.end) &&
+                (slot.requiredType ? s.user.type === slot.requiredType : true)
             )
 
             // Reduce count by matches
@@ -325,6 +332,8 @@ export async function generateSchedule({ month }: SchedulerParams) {
                 s.date === dateStr &&
                 s.department_id === slot.deptId &&
                 overlaps(s.start_time, s.end_time, slot.start, slot.end)
+                // (Note: we don't strictly check type for carry-over matches here 
+                // because newShifts were already created with type checks)
             ).length
 
             // Decrement needed count
@@ -338,6 +347,9 @@ export async function generateSchedule({ month }: SchedulerParams) {
                 // 1. Filter Valid Candidates
                 let candidates = partTimeStaff.filter((user: any) => {
                     if (assignedUserIdsToday.has(user.id)) return false
+
+                    // Check Type Requirement
+                    if (slot.requiredType && user.type !== slot.requiredType) return false
 
                     // Check if already assigned via newShifts (e.g. strict carry over)
                     const alreadyAssignedNew = newShifts.some(s => s.date === dateStr && s.user_id === user.id)

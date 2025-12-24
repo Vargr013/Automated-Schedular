@@ -8,6 +8,7 @@ export async function createLeaveRequest(formData: FormData) {
     const startDate = formData.get('startDate') as string
     const endDate = formData.get('endDate') as string
     const reason = formData.get('reason') as string
+    const leaveType = formData.get('leaveType') as string
 
     await (prisma as any).leave.create({
         data: {
@@ -15,6 +16,7 @@ export async function createLeaveRequest(formData: FormData) {
             startDate,
             endDate,
             reason,
+            leaveType: leaveType || 'UNPAID',
             status: 'PENDING'
         }
     })
@@ -34,15 +36,18 @@ export async function updateLeaveStatus(leaveId: number, status: 'APPROVED' | 'D
     // For now, admin side is most critical.
 }
 
-export async function getLeaveRequests(status?: string) {
-    const where = status ? { status } : {}
+export async function getLeaveRequests(status?: string, leaveType?: string) {
+    const where: any = {}
+    if (status) where.status = status
+    if (leaveType) where.leaveType = leaveType
+
     return await (prisma as any).leave.findMany({
         where,
         include: {
             user: true
         },
         orderBy: {
-            startDate: 'asc' // Use startDate instead of createdAt since we didn't add createdAt
+            startDate: 'asc'
         }
     })
 }

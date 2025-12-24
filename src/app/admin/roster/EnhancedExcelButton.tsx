@@ -3,6 +3,7 @@
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import { format, parseISO, eachDayOfInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, getDay, addDays } from 'date-fns'
+import { isPublicHoliday } from '@/lib/holidays'
 
 type User = {
     id: number
@@ -21,6 +22,10 @@ type Shift = {
     department: {
         name: string
         color_code: string
+    }
+    user: {
+        name: string
+        category?: string
     }
 }
 
@@ -55,6 +60,22 @@ export default function EnhancedExcelButton({
 
         let currentRow = 1
 
+        // --- FULL HEADER ---
+        worksheet.mergeCells(currentRow, 1, currentRow, 8)
+        const titleCell = worksheet.getCell(currentRow, 1)
+        titleCell.value = 'CityROCK Johannesburg'
+        titleCell.font = { size: 16, bold: true }
+        titleCell.alignment = { horizontal: 'left' }
+        currentRow++
+
+        worksheet.mergeCells(currentRow, 1, currentRow, 8)
+        const subTitleCell = worksheet.getCell(currentRow, 1)
+        subTitleCell.value = `Staff Schedule: ${format(monthDate, 'MMMM yyyy')}`
+        subTitleCell.font = { size: 12, bold: true }
+        subTitleCell.alignment = { horizontal: 'left' }
+        currentRow++
+        currentRow++ // Spacer
+
         // Helper to convert Hex to ARGB for ExcelJS
         const getArgb = (hex: string) => {
             return 'FF' + hex.replace('#', '').toUpperCase()
@@ -79,10 +100,15 @@ export default function EnhancedExcelButton({
 
             weekDays.forEach((day, index) => {
                 const cell = dateRow.getCell(index + 2)
+                const isHoliday = isPublicHoliday(format(day, 'yyyy-MM-dd'))
                 cell.value = format(day, 'd-MMM')
                 cell.alignment = { horizontal: 'center' }
                 cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } } // Black header
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: isHoliday ? 'FFB91C1C' : 'FF000000' }
+                }
                 cell.border = borderStyle
             })
             currentRow++
@@ -91,11 +117,38 @@ export default function EnhancedExcelButton({
             const dayNameRow = worksheet.getRow(currentRow)
             weekDays.forEach((day, index) => {
                 const cell = dayNameRow.getCell(index + 2)
+                const isHoliday = isPublicHoliday(format(day, 'yyyy-MM-dd'))
                 cell.value = format(day, 'EEEE')
                 cell.alignment = { horizontal: 'center' }
                 cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } }
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: isHoliday ? 'FFB91C1C' : 'FF000000' }
+                }
                 cell.border = borderStyle
+            })
+            currentRow++
+
+            // --- MOD Row ---
+            const modRow = worksheet.getRow(currentRow)
+            modRow.getCell(1).value = 'MOD'
+            modRow.getCell(1).font = { bold: true }
+            modRow.getCell(1).border = borderStyle
+            modRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCCCCC' } } // Grey
+
+            weekDays.forEach((day, index) => {
+                const dateStr = format(day, 'yyyy-MM-dd')
+                const modShifts = shifts.filter(s => s.date === dateStr && s.department.name === 'Management (MOD)')
+                const cell = modRow.getCell(index + 2)
+
+                if (modShifts.length > 0) {
+                    const uniqueNames = Array.from(new Set(modShifts.map(s => s.user.name)))
+                    cell.value = uniqueNames.join('/')
+                }
+                cell.alignment = { horizontal: 'center' }
+                cell.border = borderStyle
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCCCCC' } }
             })
             currentRow++
 
@@ -108,12 +161,12 @@ export default function EnhancedExcelButton({
 
             weekDays.forEach((day, index) => {
                 const dateStr = format(day, 'yyyy-MM-dd')
-                const smodShift = shifts.find(s => s.date === dateStr && s.is_smod)
+                const smodShifts = shifts.filter(s => s.date === dateStr && (s.department.name === 'Shift Manager (SMOD)' || s.is_smod))
                 const cell = smodRow.getCell(index + 2)
 
-                if (smodShift) {
-                    const user = users.find(u => u.id === smodShift.user_id)
-                    cell.value = user?.name || ''
+                if (smodShifts.length > 0) {
+                    const uniqueNames = Array.from(new Set(smodShifts.map(s => s.user.name)))
+                    cell.value = uniqueNames.join('/')
                 }
                 cell.alignment = { horizontal: 'center' }
                 cell.border = borderStyle
@@ -175,8 +228,11 @@ export default function EnhancedExcelButton({
                                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: getArgb(shift.department.color_code) } }
                             }
                         } else {
-                            // Grey out if not in month (optional, but good for visuals)
-                            if (!isSameMonth(day, monthDate)) {
+                            // Grey out if not in month or highlight if holiday
+                            const isHoliday = isPublicHoliday(dateStr)
+                            if (isHoliday) {
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } } // Light holiday red
+                            } else if (!isSameMonth(day, monthDate)) {
                                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } }
                             }
                         }

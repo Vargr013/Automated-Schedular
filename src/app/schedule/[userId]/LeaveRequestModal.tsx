@@ -35,6 +35,20 @@ export default function LeaveRequestModal({ userId, onClose }: { userId: number,
                     </div>
 
                     <div className="form-group">
+                        <label>Leave Type</label>
+                        <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem' }}>
+                                <input type="radio" name="leaveType" value="PAID" defaultChecked />
+                                Paid Leave
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem' }}>
+                                <input type="radio" name="leaveType" value="UNPAID" />
+                                Unpaid Leave
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="form-group">
                         <label>Reason</label>
                         <textarea name="reason" rows={3} className="input" placeholder="Optional..." />
                     </div>
