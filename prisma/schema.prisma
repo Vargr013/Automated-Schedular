@@ -30,6 +30,7 @@ model Leave {
   startDate String   // YYYY-MM-DD
   endDate   String   // YYYY-MM-DD
   reason    String?
+  status    String   @default("PENDING") // "PENDING", "APPROVED", "DECLINED"
   user      User     @relation(fields: [userId], references: [id])
 }
 

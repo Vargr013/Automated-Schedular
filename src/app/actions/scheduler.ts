@@ -106,6 +106,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
             skills: { include: { department: true } },
             leave: {
                 where: {
+                    status: 'APPROVED',
                     OR: [
                         { startDate: { gte: queryStart, lte: queryEnd } },
                         { endDate: { gte: queryStart, lte: queryEnd } },

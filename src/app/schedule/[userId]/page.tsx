@@ -1,9 +1,11 @@
 import { getUser } from '@/app/actions/users'
 import { getUserShifts as fetchUserShifts } from '@/app/actions/shifts'
+import { getUserLeaveRequests } from '@/app/actions/leave'
 import { format, startOfMonth, endOfMonth, parseISO, isSameDay, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameWeek } from 'date-fns'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import CalendarExport from './CalendarExport'
+import LeaveSection from './LeaveSection'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +31,7 @@ export default async function PersonalSchedulePage({
     const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd')
 
     const shifts = await fetchUserShifts(id, startDate, endDate)
+    const leaveRequests = await getUserLeaveRequests(id)
 
     // Group by Week
     const weeks = []
@@ -104,6 +107,9 @@ export default async function PersonalSchedulePage({
 
             {/* Content */}
             <div style={{ flex: 1, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+                <LeaveSection userId={id} requests={leaveRequests as any} />
+
                 {weeks.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted-foreground)' }}>
                         No shifts scheduled for this month.
