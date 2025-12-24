@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import CalendarExport from './CalendarExport'
 import LeaveSection from './LeaveSection'
+import { getMultiplier } from '@/lib/holidays'
 
 export const dynamic = 'force-dynamic'
 
@@ -88,7 +89,7 @@ export default async function PersonalSchedulePage({
                     </Link>
                 </div>
                 <div style={{ fontWeight: '600' }}>{user.name}</div>
-                <CalendarExport shifts={shifts} />
+                <CalendarExport shifts={shifts} userId={id} />
             </div>
 
             {/* Month Nav */}
@@ -100,9 +101,40 @@ export default async function PersonalSchedulePage({
                 backgroundColor: 'var(--muted)',
                 borderBottom: '1px solid var(--border)'
             }}>
-                <Link href={`/schedule/${userId}?month=${prevMonth}`} style={{ textDecoration: 'none', fontSize: '1.25rem' }}>&lsaquo;</Link>
-                <span style={{ fontWeight: '600' }}>{format(monthDate, 'MMMM yyyy')}</span>
-                <Link href={`/schedule/${userId}?month=${nextMonth}`} style={{ textDecoration: 'none', fontSize: '1.25rem' }}>&rsaquo;</Link>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <Link href={`/schedule/${userId}?month=${prevMonth}`} style={{ textDecoration: 'none', fontSize: '1.25rem' }}>&lsaquo;</Link>
+                    <span style={{ fontWeight: '600' }}>{format(monthDate, 'MMMM yyyy')}</span>
+                    <Link href={`/schedule/${userId}?month=${nextMonth}`} style={{ textDecoration: 'none', fontSize: '1.25rem' }}>&rsaquo;</Link>
+                </div>
+
+                {/* Total Hours Badge */}
+                <div style={{
+                    backgroundColor: 'rgba(var(--primary-rgb), 0.1)',
+                    color: 'var(--primary)',
+                    padding: '0.25rem 0.75rem',
+                    borderRadius: '2rem',
+                    fontSize: '0.875rem',
+                    fontWeight: '700',
+                    border: '1px solid rgba(var(--primary-rgb), 0.2)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-end',
+                    lineHeight: '1.2'
+                }}>
+                    <span>
+                        {shifts.reduce((acc: number, s: any) => {
+                            const start = parseISO(`${s.date}T${s.start_time}`)
+                            const end = parseISO(`${s.date}T${s.end_time}`)
+                            const rawHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60)
+                            return acc + (rawHours * getMultiplier(s.date))
+                        }, 0).toFixed(1)} hrs <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>(weighted)</span>
+                    </span>
+                    {shifts.some((s: any) => getMultiplier(s.date) > 1) && (
+                        <span style={{ fontSize: '0.65rem', fontWeight: 'normal', color: 'var(--muted-foreground)' }}>
+                            incl. Sun (1.5x) & Holidays (2x)
+                        </span>
+                    )}
+                </div>
             </div>
 
             {/* Content */}
