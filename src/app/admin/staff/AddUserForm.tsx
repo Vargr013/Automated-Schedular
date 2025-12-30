@@ -57,6 +57,11 @@ export default function AddUserForm({ departments }: { departments: Department[]
                         <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>Max Weekly Hours</label>
                         <input name="max_weekly_hours" type="number" defaultValue="40" className="input" />
                     </div>
+
+                    <div className="form-group">
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>Hourly Rate (R)</label>
+                        <input name="hourly_rate" type="number" step="0.01" min="0" defaultValue="42" className="input" />
+                    </div>
                 </div>
 
                 <div className="form-group" style={{ marginBottom: '2rem' }}>

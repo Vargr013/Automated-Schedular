@@ -163,3 +163,15 @@ export async function deleteBaseRule(id: number) {
     })
     revalidatePath('/admin/base-schedule')
 }
+
+export async function moveBaseRule(ruleId: number, newUserId: number, newDayIndex: number) {
+    // Check if a rule already exists for this slot? (Optional business logic, skipping for flexibility)
+    await prisma.userBaseRule.update({
+        where: { id: ruleId },
+        data: {
+            user_id: newUserId,
+            day_of_week: newDayIndex
+        }
+    })
+    revalidatePath('/admin/base-schedule')
+}

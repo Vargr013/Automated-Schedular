@@ -19,6 +19,7 @@ type User = {
     type: string
     category: string
     max_weekly_hours: number
+    hourly_rate: number
     auto_schedule: boolean
     skills: {
         department: {

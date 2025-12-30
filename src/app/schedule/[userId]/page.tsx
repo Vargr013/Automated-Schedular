@@ -1,6 +1,7 @@
 import { getUser } from '@/app/actions/users'
 import { getUserShifts as fetchUserShifts } from '@/app/actions/shifts'
 import { getUserLeaveRequests } from '@/app/actions/leave'
+import { isMonthPublished } from '@/app/actions/publish'
 import { format, startOfMonth, endOfMonth, parseISO, isSameDay, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameWeek } from 'date-fns'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -31,7 +32,11 @@ export default async function PersonalSchedulePage({
     const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd')
 
-    const shifts = await fetchUserShifts(id, startDate, endDate)
+    const isPublished = await isMonthPublished(currentMonth)
+
+    // Only fetch shifts if published or if viewing a past month (optional, but let's stick to strict publishing for "Activate")
+    // Use empty array if not published
+    const shifts = isPublished ? await fetchUserShifts(id, startDate, endDate) : []
     const leaveRequests = await getUserLeaveRequests(id)
 
     // Group by Week
@@ -142,7 +147,12 @@ export default async function PersonalSchedulePage({
 
                 <LeaveSection userId={id} requests={leaveRequests as any} />
 
-                {weeks.length === 0 ? (
+                {!isPublished ? (
+                    <div className="card" style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted-foreground)' }}>
+                        <h3 style={{ marginBottom: '0.5rem', color: 'var(--foreground)' }}>Schedule Not Published</h3>
+                        <p>The roster for {format(monthDate, 'MMMM yyyy')} has not been published yet.</p>
+                    </div>
+                ) : weeks.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted-foreground)' }}>
                         No shifts scheduled for this month.
                     </div>

@@ -16,6 +16,7 @@ type User = {
     type: string
     category: string
     max_weekly_hours: number
+    hourly_rate: number
     skills: {
         department: {
             id: number
@@ -94,6 +95,11 @@ export default function EditUserModal({
                         <div className="form-group">
                             <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>Max Weekly Hours</label>
                             <input name="max_weekly_hours" type="number" defaultValue={user.max_weekly_hours} className="input" />
+                        </div>
+
+                        <div className="form-group">
+                            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>Hourly Rate (R)</label>
+                            <input name="hourly_rate" type="number" step="0.01" min="0" defaultValue={user.hourly_rate || 0} className="input" />
                         </div>
                     </div>
 

@@ -2,8 +2,11 @@
 
 import { useState, useMemo } from 'react'
 import { format, parseISO, eachDayOfInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameWeek } from 'date-fns'
-import { createShift, deleteShift } from '@/app/actions/shifts'
+import { createShift, deleteShift, moveShift } from '@/app/actions/shifts'
 import { AlertTriangle, AlertCircle } from 'lucide-react'
+import { DndContext, DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
+import DraggableShift from './DraggableShift'
+import DroppableCell from './DroppableCell'
 
 type User = {
     id: number
@@ -60,6 +63,30 @@ export default function RosterGrid({
     currentMonth: string
 }) {
     const [selectedCell, setSelectedCell] = useState<{ userId: number, date: string } | null>(null)
+
+    // DnD Sensors
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 8,
+            },
+        })
+    )
+
+    const handleDragEnd = async (event: DragEndEvent) => {
+        const { active, over } = event
+
+        if (over && active.id !== over.id) {
+            const shiftId = active.data.current?.shiftId
+            const [userIdStr, dateStr] = (over.id as string).split('|')
+            const userId = parseInt(userIdStr)
+
+            if (shiftId && userId && dateStr) {
+                // Optimistic update could go here, but for now we rely on server revalidation
+                await moveShift(shiftId, userId, dateStr)
+            }
+        }
+    }
 
     const monthDate = parseISO(`${currentMonth}-01`)
     const daysInMonth = eachDayOfInterval({
@@ -153,68 +180,62 @@ export default function RosterGrid({
                                 style={{
                                     borderBottom: '1px solid var(--border)',
                                     borderRight: '1px solid var(--border)',
-                                    minHeight: '80px',
-                                    backgroundColor: isClosed ? 'var(--muted)' : 'var(--background)',
-                                    cursor: isClosed ? 'default' : 'pointer',
                                     position: 'relative',
-                                    padding: '0.5rem',
-                                    transition: 'background-color 0.2s'
-                                }}
-                                onMouseEnter={(e) => {
-                                    if (!isClosed) e.currentTarget.style.backgroundColor = 'var(--muted)'
-                                }}
-                                onMouseLeave={(e) => {
-                                    if (!isClosed) e.currentTarget.style.backgroundColor = 'var(--background)'
                                 }}
                             >
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    {cellShifts.map(shift => {
-                                        const isConflict = conflicts.has(shift.id)
-                                        return (
-                                            <div key={shift.id} style={{
-                                                backgroundColor: shift.department.color_code,
-                                                color: '#fff',
-                                                padding: '6px 8px',
-                                                borderRadius: '6px',
-                                                fontSize: '0.75rem',
-                                                boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                                                position: 'relative',
-                                                border: isConflict ? '2px solid #ef4444' : '1px solid rgba(255,255,255,0.2)'
-                                            }}>
-                                                <div style={{ fontWeight: '600', marginBottom: '1px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    {shift.department.name}
-                                                    {isConflict && <AlertTriangle size={12} color="white" fill="#ef4444" />}
-                                                </div>
-                                                <div style={{ opacity: 0.9 }}>{shift.start_time} - {shift.end_time}</div>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        if (confirm('Delete shift?')) deleteShift(shift.id)
-                                                    }}
-                                                    style={{
-                                                        position: 'absolute',
-                                                        top: '4px',
-                                                        right: '4px',
-                                                        background: 'rgba(0,0,0,0.2)',
-                                                        border: 'none',
+                                <DroppableCell userId={user.id} date={dateStr} isClosed={isClosed}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {cellShifts.map(shift => {
+                                            const isConflict = conflicts.has(shift.id)
+                                            return (
+                                                <DraggableShift key={shift.id} shift={shift}>
+                                                    <div style={{
+                                                        backgroundColor: shift.department.color_code,
                                                         color: '#fff',
-                                                        cursor: 'pointer',
-                                                        fontSize: '10px',
-                                                        width: '16px',
-                                                        height: '16px',
-                                                        borderRadius: '50%',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        lineHeight: 1
-                                                    }}
-                                                >
-                                                    ✕
-                                                </button>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
+                                                        padding: '6px 8px',
+                                                        borderRadius: '6px',
+                                                        fontSize: '0.75rem',
+                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                                        position: 'relative',
+                                                        border: isConflict ? '2px solid #ef4444' : '1px solid rgba(255,255,255,0.2)'
+                                                    }}>
+                                                        <div style={{ fontWeight: '600', marginBottom: '1px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            {shift.department.name}
+                                                            {isConflict && <AlertTriangle size={12} color="white" fill="#ef4444" />}
+                                                        </div>
+                                                        <div style={{ opacity: 0.9 }}>{shift.start_time} - {shift.end_time}</div>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                if (confirm('Delete shift?')) deleteShift(shift.id)
+                                                            }}
+                                                            onPointerDown={(e) => e.stopPropagation()} // Prevent drag start on delete button
+                                                            style={{
+                                                                position: 'absolute',
+                                                                top: '4px',
+                                                                right: '4px',
+                                                                background: 'rgba(0,0,0,0.2)',
+                                                                border: 'none',
+                                                                color: '#fff',
+                                                                cursor: 'pointer',
+                                                                fontSize: '10px',
+                                                                width: '16px',
+                                                                height: '16px',
+                                                                borderRadius: '50%',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                lineHeight: 1
+                                                            }}
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                </DraggableShift>
+                                            )
+                                        })}
+                                    </div>
+                                </DroppableCell>
                             </div>
                         )
                     })}
@@ -261,195 +282,197 @@ export default function RosterGrid({
     const CATEGORY_ORDER = ['Management', 'Shift Manager', 'Cafe', 'Shop', 'Front Desk']
 
     return (
-        <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1 }}>
-            <div style={{ overflowX: 'auto', flex: 1, maxWidth: '100vw' }}>
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: `200px repeat(${daysInMonth.length}, minmax(120px, 1fr))`,
-                }}>
-                    {/* Header Row */}
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+            <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1 }}>
+                <div style={{ overflowX: 'auto', flex: 1, maxWidth: '100vw' }}>
                     <div style={{
-                        padding: '1rem',
-                        fontWeight: '600',
-                        borderBottom: '1px solid var(--border)',
-                        borderRight: '1px solid var(--border)',
-                        position: 'sticky',
-                        left: 0,
-                        background: 'var(--background)',
-                        zIndex: 20,
-                        color: 'var(--foreground)'
+                        display: 'grid',
+                        gridTemplateColumns: `200px repeat(${daysInMonth.length}, minmax(120px, 1fr))`,
                     }}>
-                        Staff Member
-                    </div>
-                    {daysInMonth.map(day => {
-                        const dateStr = format(day, 'yyyy-MM-dd')
-                        const status = getDayStatus(dateStr)
-                        const isHoliday = status?.status === 'HOLIDAY'
-                        const isClosed = status?.status === 'CLOSED'
-
-                        return (
-                            <div key={dateStr} style={{
-                                padding: '0.75rem',
-                                textAlign: 'center',
-                                borderBottom: '1px solid var(--border)',
-                                borderRight: '1px solid var(--border)',
-                                backgroundColor: isHoliday ? 'rgba(239, 68, 68, 0.1)' : isClosed ? 'var(--muted)' : 'var(--background)',
-                                color: isHoliday ? 'var(--destructive)' : 'var(--foreground)',
-                                minWidth: '120px'
-                            }}>
-                                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.7 }}>{format(day, 'EEE')}</div>
-                                <div style={{ fontSize: '1.125rem', fontWeight: '600' }}>{format(day, 'd')}</div>
-                                {status?.event_note && <div style={{ fontSize: '0.65rem', marginTop: '2px', fontWeight: '500' }}>{status.event_note}</div>}
-                            </div>
-                        )
-                    })}
-
-                    {/* Full Time Section */}
-                    <div style={{
-                        gridColumn: `1 / span ${daysInMonth.length + 1}`,
-                        padding: '0.75rem 1rem',
-                        backgroundColor: '#333',
-                        color: '#fff',
-                        fontWeight: '700',
-                        fontSize: '1rem',
-                        position: 'sticky',
-                        left: 0
-                    }}>
-                        Full Time & Cafe
-                    </div>
-
-                    {CATEGORY_ORDER.map(category => {
-                        const categoryUsers = groupedUsers['FULL_TIME'][category]
-                        if (!categoryUsers || categoryUsers.length === 0) return null
-
-                        return (
-                            <div key={`ft-${category}`} style={{ display: 'contents' }}>
-                                <div style={{
-                                    gridColumn: `1 / span ${daysInMonth.length + 1}`,
-                                    padding: '0.5rem 1rem',
-                                    backgroundColor: 'var(--muted)',
-                                    borderBottom: '1px solid var(--border)',
-                                    fontWeight: '700',
-                                    fontSize: '0.875rem',
-                                    color: 'var(--foreground)',
-                                    position: 'sticky',
-                                    left: 0,
-                                    paddingLeft: '2rem' // Indent
-                                }}>
-                                    {category === 'Management' ? 'Management (MOD)' :
-                                        category === 'Shift Manager' ? 'Shift Manager (SMOD)' :
-                                            category}
-                                </div>
-                                {renderUserRows(categoryUsers)}
-                            </div>
-                        )
-                    })}
-
-                    {/* Part Time Section */}
-                    <div style={{
-                        gridColumn: `1 / span ${daysInMonth.length + 1}`,
-                        padding: '0.75rem 1rem',
-                        backgroundColor: '#333',
-                        color: '#fff',
-                        fontWeight: '700',
-                        fontSize: '1rem',
-                        position: 'sticky',
-                        left: 0
-                    }}>
-                        Part Time
-                    </div>
-
-                    {CATEGORY_ORDER.map(category => {
-                        const categoryUsers = groupedUsers['PART_TIME'][category]
-                        if (!categoryUsers || categoryUsers.length === 0) return null
-
-                        return (
-                            <div key={`pt-${category}`} style={{ display: 'contents' }}>
-                                <div style={{
-                                    gridColumn: `1 / span ${daysInMonth.length + 1}`,
-                                    padding: '0.5rem 1rem',
-                                    backgroundColor: 'var(--muted)',
-                                    borderBottom: '1px solid var(--border)',
-                                    fontWeight: '700',
-                                    fontSize: '0.875rem',
-                                    color: 'var(--foreground)',
-                                    position: 'sticky',
-                                    left: 0,
-                                    paddingLeft: '2rem' // Indent
-                                }}>
-                                    {category === 'Management' ? 'Management (MOD)' :
-                                        category === 'Shift Manager' ? 'Shift Manager (SMOD)' :
-                                            category}
-                                </div>
-                                {renderUserRows(categoryUsers)}
-                            </div>
-                        )
-                    })}
-                </div>
-            </div>
-
-            {/* Add Shift Modal */}
-            {selectedCell && (
-                <div className="modal-overlay" onClick={() => setSelectedCell(null)}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                            <h3 style={{ fontSize: '1.25rem' }}>Add Shift</h3>
-                            <button onClick={() => setSelectedCell(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--muted-foreground)' }}>&times;</button>
-                        </div>
-
-                        <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'var(--muted)', borderRadius: 'var(--radius)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                <span style={{ color: 'var(--muted-foreground)' }}>Staff:</span>
-                                <span style={{ fontWeight: '600' }}>{users.find(u => u.id === selectedCell.userId)?.name}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span style={{ color: 'var(--muted-foreground)' }}>Date:</span>
-                                <span style={{ fontWeight: '600' }}>{format(parseISO(selectedCell.date), 'MMMM do, yyyy')}</span>
-                            </div>
-                        </div>
-
-                        <form action={async (formData) => {
-                            await createShift(formData)
-                            setSelectedCell(null)
+                        {/* Header Row */}
+                        <div style={{
+                            padding: '1rem',
+                            fontWeight: '600',
+                            borderBottom: '1px solid var(--border)',
+                            borderRight: '1px solid var(--border)',
+                            position: 'sticky',
+                            left: 0,
+                            background: 'var(--background)',
+                            zIndex: 20,
+                            color: 'var(--foreground)'
                         }}>
-                            <input type="hidden" name="user_id" value={selectedCell.userId} />
-                            <input type="hidden" name="date" value={selectedCell.date} />
+                            Staff Member
+                        </div>
+                        {daysInMonth.map(day => {
+                            const dateStr = format(day, 'yyyy-MM-dd')
+                            const status = getDayStatus(dateStr)
+                            const isHoliday = status?.status === 'HOLIDAY'
+                            const isClosed = status?.status === 'CLOSED'
 
-                            <div className="form-group">
-                                <label>Department</label>
-                                <select name="department_id" required className="select">
-                                    {departments.map(dept => (
-                                        <option key={dept.id} value={dept.id}>{dept.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div style={{ display: 'flex', gap: '1rem' }}>
-                                <div className="form-group" style={{ flex: 1 }}>
-                                    <label>Start Time</label>
-                                    <input name="start_time" type="time" required className="input" />
+                            return (
+                                <div key={dateStr} style={{
+                                    padding: '0.75rem',
+                                    textAlign: 'center',
+                                    borderBottom: '1px solid var(--border)',
+                                    borderRight: '1px solid var(--border)',
+                                    backgroundColor: isHoliday ? 'rgba(239, 68, 68, 0.1)' : isClosed ? 'var(--muted)' : 'var(--background)',
+                                    color: isHoliday ? 'var(--destructive)' : 'var(--foreground)',
+                                    minWidth: '120px'
+                                }}>
+                                    <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.7 }}>{format(day, 'EEE')}</div>
+                                    <div style={{ fontSize: '1.125rem', fontWeight: '600' }}>{format(day, 'd')}</div>
+                                    {status?.event_note && <div style={{ fontSize: '0.65rem', marginTop: '2px', fontWeight: '500' }}>{status.event_note}</div>}
                                 </div>
-                                <div className="form-group" style={{ flex: 1 }}>
-                                    <label>End Time</label>
-                                    <input name="end_time" type="time" required className="input" />
+                            )
+                        })}
+
+                        {/* Full Time Section */}
+                        <div style={{
+                            gridColumn: `1 / span ${daysInMonth.length + 1}`,
+                            padding: '0.75rem 1rem',
+                            backgroundColor: '#333',
+                            color: '#fff',
+                            fontWeight: '700',
+                            fontSize: '1rem',
+                            position: 'sticky',
+                            left: 0
+                        }}>
+                            Full Time & Cafe
+                        </div>
+
+                        {CATEGORY_ORDER.map(category => {
+                            const categoryUsers = groupedUsers['FULL_TIME'][category]
+                            if (!categoryUsers || categoryUsers.length === 0) return null
+
+                            return (
+                                <div key={`ft-${category}`} style={{ display: 'contents' }}>
+                                    <div style={{
+                                        gridColumn: `1 / span ${daysInMonth.length + 1}`,
+                                        padding: '0.5rem 1rem',
+                                        backgroundColor: 'var(--muted)',
+                                        borderBottom: '1px solid var(--border)',
+                                        fontWeight: '700',
+                                        fontSize: '0.875rem',
+                                        color: 'var(--foreground)',
+                                        position: 'sticky',
+                                        left: 0,
+                                        paddingLeft: '2rem' // Indent
+                                    }}>
+                                        {category === 'Management' ? 'Management (MOD)' :
+                                            category === 'Shift Manager' ? 'Shift Manager (SMOD)' :
+                                                category}
+                                    </div>
+                                    {renderUserRows(categoryUsers)}
                                 </div>
-                            </div>
+                            )
+                        })}
 
-                            <div className="form-group">
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                                    <input type="checkbox" name="is_smod" style={{ width: '1.25rem', height: '1.25rem' }} />
-                                    <span>Shift Manager (SMOD)</span>
-                                </label>
-                            </div>
+                        {/* Part Time Section */}
+                        <div style={{
+                            gridColumn: `1 / span ${daysInMonth.length + 1}`,
+                            padding: '0.75rem 1rem',
+                            backgroundColor: '#333',
+                            color: '#fff',
+                            fontWeight: '700',
+                            fontSize: '1rem',
+                            position: 'sticky',
+                            left: 0
+                        }}>
+                            Part Time
+                        </div>
 
-                            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-                                <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setSelectedCell(null)}>Cancel</button>
-                                <button type="submit" className="btn" style={{ flex: 1 }}>Save Shift</button>
-                            </div>
-                        </form>
+                        {CATEGORY_ORDER.map(category => {
+                            const categoryUsers = groupedUsers['PART_TIME'][category]
+                            if (!categoryUsers || categoryUsers.length === 0) return null
+
+                            return (
+                                <div key={`pt-${category}`} style={{ display: 'contents' }}>
+                                    <div style={{
+                                        gridColumn: `1 / span ${daysInMonth.length + 1}`,
+                                        padding: '0.5rem 1rem',
+                                        backgroundColor: 'var(--muted)',
+                                        borderBottom: '1px solid var(--border)',
+                                        fontWeight: '700',
+                                        fontSize: '0.875rem',
+                                        color: 'var(--foreground)',
+                                        position: 'sticky',
+                                        left: 0,
+                                        paddingLeft: '2rem' // Indent
+                                    }}>
+                                        {category === 'Management' ? 'Management (MOD)' :
+                                            category === 'Shift Manager' ? 'Shift Manager (SMOD)' :
+                                                category}
+                                    </div>
+                                    {renderUserRows(categoryUsers)}
+                                </div>
+                            )
+                        })}
                     </div>
                 </div>
-            )}
-        </div>
+
+                {/* Add Shift Modal */}
+                {selectedCell && (
+                    <div className="modal-overlay" onClick={() => setSelectedCell(null)}>
+                        <div className="modal-content" onClick={e => e.stopPropagation()}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                                <h3 style={{ fontSize: '1.25rem' }}>Add Shift</h3>
+                                <button onClick={() => setSelectedCell(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--muted-foreground)' }}>&times;</button>
+                            </div>
+
+                            <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'var(--muted)', borderRadius: 'var(--radius)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <span style={{ color: 'var(--muted-foreground)' }}>Staff:</span>
+                                    <span style={{ fontWeight: '600' }}>{users.find(u => u.id === selectedCell.userId)?.name}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--muted-foreground)' }}>Date:</span>
+                                    <span style={{ fontWeight: '600' }}>{format(parseISO(selectedCell.date), 'MMMM do, yyyy')}</span>
+                                </div>
+                            </div>
+
+                            <form action={async (formData) => {
+                                await createShift(formData)
+                                setSelectedCell(null)
+                            }}>
+                                <input type="hidden" name="user_id" value={selectedCell.userId} />
+                                <input type="hidden" name="date" value={selectedCell.date} />
+
+                                <div className="form-group">
+                                    <label>Department</label>
+                                    <select name="department_id" required className="select">
+                                        {departments.map(dept => (
+                                            <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '1rem' }}>
+                                    <div className="form-group" style={{ flex: 1 }}>
+                                        <label>Start Time</label>
+                                        <input name="start_time" type="time" required className="input" />
+                                    </div>
+                                    <div className="form-group" style={{ flex: 1 }}>
+                                        <label>End Time</label>
+                                        <input name="end_time" type="time" required className="input" />
+                                    </div>
+                                </div>
+
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                                        <input type="checkbox" name="is_smod" style={{ width: '1.25rem', height: '1.25rem' }} />
+                                        <span>Shift Manager (SMOD)</span>
+                                    </label>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+                                    <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setSelectedCell(null)}>Cancel</button>
+                                    <button type="submit" className="btn" style={{ flex: 1 }}>Save Shift</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </DndContext>
     )
 }

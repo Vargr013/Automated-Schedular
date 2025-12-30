@@ -68,6 +68,17 @@ export async function deleteShift(id: number) {
     revalidatePath('/admin/roster')
 }
 
+export async function moveShift(shiftId: number, newUserId: number, newDate: string) {
+    await prisma.shift.update({
+        where: { id: shiftId },
+        data: {
+            user_id: newUserId,
+            date: newDate
+        }
+    })
+    revalidatePath('/admin/roster')
+}
+
 export async function generateSchedule(month: string) {
     const date = parseISO(`${month}-01`)
     const start = startOfMonth(date)

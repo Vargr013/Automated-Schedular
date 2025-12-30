@@ -8,6 +8,7 @@ import GenerateButton from './GenerateButton'
 import AutoSchedulerModal from './AutoSchedulerModal'
 import ClearScheduleButton from './ClearScheduleButton'
 import EnhancedPdfButton from './EnhancedPdfButton'
+import PublishButton from './PublishButton'
 import EnhancedExcelButton from './EnhancedExcelButton'
 import { startOfMonth, endOfMonth, format } from 'date-fns'
 
@@ -41,6 +42,7 @@ export default async function RosterPage({
                     <MonthSelector currentMonth={currentMonth} />
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <PublishButton currentMonth={currentMonth} />
                     <GenerateButton currentMonth={currentMonth} />
                     <AutoSchedulerModal currentMonth={currentMonth} />
                     <ClearScheduleButton currentMonth={currentMonth} />

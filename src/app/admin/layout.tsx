@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import './admin.css'
-import { LayoutDashboard, Users, Briefcase, Calendar, Grid, FileText, CalendarOff, Settings } from 'lucide-react'
+import { LayoutDashboard, Users, Briefcase, Calendar, Grid, FileText, CalendarOff, Settings, DollarSign } from 'lucide-react'
 
 export default function AdminLayout({
     children,
@@ -68,6 +68,12 @@ export default function AdminLayout({
                             <Link href="/admin/roster" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                 <Grid size={18} />
                                 Roster Grid
+                            </Link>
+                        </li>
+                        <li>
+                            <Link href="/admin/budget" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <DollarSign size={18} />
+                                Budget & Costing
                             </Link>
                         </li>
                     </ul>

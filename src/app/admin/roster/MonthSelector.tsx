@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-reac
 import { format, addMonths, subMonths, parseISO, setMonth, setYear } from 'date-fns'
 import { useState, useRef, useEffect } from 'react'
 
-export default function MonthSelector({ currentMonth }: { currentMonth: string }) {
+export default function MonthSelector({ currentMonth, baseUrl = '/admin/roster' }: { currentMonth: string, baseUrl?: string }) {
     const router = useRouter()
     const [isOpen, setIsOpen] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
@@ -25,19 +25,19 @@ export default function MonthSelector({ currentMonth }: { currentMonth: string }
     const handleSelect = (monthIndex: number) => {
         const newDate = setMonth(setYear(date, viewYear), monthIndex)
         const newMonthStr = format(newDate, 'yyyy-MM')
-        router.push(`/admin/roster?month=${newMonthStr}`)
+        router.push(`${baseUrl}?month=${newMonthStr}`)
         setIsOpen(false)
     }
 
     // Navigation
     const nextMonth = () => {
         const newDate = addMonths(date, 1)
-        router.push(`/admin/roster?month=${format(newDate, 'yyyy-MM')}`)
+        router.push(`${baseUrl}?month=${format(newDate, 'yyyy-MM')}`)
     }
 
     const prevMonth = () => {
         const newDate = subMonths(date, 1)
-        router.push(`/admin/roster?month=${format(newDate, 'yyyy-MM')}`)
+        router.push(`${baseUrl}?month=${format(newDate, 'yyyy-MM')}`)
     }
 
     // Close on click outside

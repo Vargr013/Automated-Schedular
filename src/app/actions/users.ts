@@ -27,6 +27,7 @@ export async function createUser(formData: FormData) {
     const type = formData.get('type') as string
     const category = formData.get('category') as string
     const max_weekly_hours = parseInt(formData.get('max_weekly_hours') as string) || 40
+    const hourly_rate = parseFloat(formData.get('hourly_rate') as string) || 42
     const skills = formData.getAll('skills') as string[]
 
     await prisma.user.create({
@@ -36,6 +37,7 @@ export async function createUser(formData: FormData) {
             type,
             category,
             max_weekly_hours,
+            hourly_rate,
             skills: {
                 create: skills.map(deptId => ({
                     department: {
@@ -55,6 +57,7 @@ export async function updateUser(id: number, formData: FormData) {
     const type = formData.get('type') as string
     const category = formData.get('category') as string
     const max_weekly_hours = parseInt(formData.get('max_weekly_hours') as string) || 40
+    const hourly_rate = parseFloat(formData.get('hourly_rate') as string) || 0
     const skills = formData.getAll('skills') as string[]
 
     await prisma.user.update({
@@ -65,6 +68,7 @@ export async function updateUser(id: number, formData: FormData) {
             type,
             category,
             max_weekly_hours,
+            hourly_rate,
             skills: {
                 deleteMany: {},
                 create: skills.map(deptId => ({
