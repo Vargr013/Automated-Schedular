@@ -84,42 +84,107 @@ export async function generateSchedule(month: string) {
     const start = startOfMonth(date)
     const end = endOfMonth(date)
 
+    // 1. Fetch Constraints & Buffer Shifts
+    const constraints = await prisma.constraint.findMany({ where: { isActive: true } })
+    // Map to config
+    const constraintConfigs = constraints.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        params: c.params,
+        severity: c.severity,
+        isActive: c.isActive,
+        department_id: c.department_id
+    }))
+
+    // Fetch existing shifts for context (include leading buffer for rolling windows)
+    const bufferStart = require('date-fns').subDays(start, 14) // 14 day buffer
+    const existingShiftsDB = await prisma.shift.findMany({
+        where: {
+            date: {
+                gte: format(bufferStart, 'yyyy-MM-dd'),
+                lte: format(end, 'yyyy-MM-dd')
+            }
+        },
+        include: { user: true, department: true } // Need checks? validation expects ShiftData
+    })
+
+    // Mutable list of shifts to track state during generation
+    let currentShifts = existingShiftsDB.map(s => ({
+        id: s.id,
+        user_id: s.user_id,
+        department_id: s.department_id,
+        date: s.date,
+        start_time: s.start_time,
+        end_time: s.end_time
+    }))
+
     const days = eachDayOfInterval({ start, end })
     const rules = await prisma.userBaseRule.findMany({
-        include: {
-            template: true
-        }
+        include: { template: true }
     })
 
     let createdCount = 0
 
+    // Import validation dynamically if needed, or rely on it being present (we imported types above, need engine)
+    const { validateRoster } = require('@/lib/validation/engine')
+
     for (const day of days) {
-        const dayOfWeek = getDay(day) // 0 = Sunday, 1 = Monday...
+        const dayOfWeek = getDay(day)
         const dateString = format(day, 'yyyy-MM-dd')
 
-        // Find rules matching this day of week
         const matchingRules = rules.filter(r => r.day_of_week === dayOfWeek)
 
         for (const rule of matchingRules) {
-            // Check if shift already exists
-            const existingShift = await prisma.shift.findFirst({
-                where: {
-                    user_id: rule.user_id,
-                    date: dateString
-                }
-            })
+            // Check if shift already exists in our local tracker
+            const exists = currentShifts.find(s => s.user_id === rule.user_id && s.date === dateString)
 
-            if (!existingShift) {
-                await prisma.shift.create({
-                    data: {
-                        user_id: rule.user_id,
-                        department_id: rule.template.department_id,
-                        date: dateString,
-                        start_time: rule.template.start_time,
-                        end_time: rule.template.end_time
-                    }
-                })
-                createdCount++
+            if (!exists) {
+                // Candidate Shift
+                const candidate = {
+                    id: -1, // Formatting placeholder
+                    user_id: rule.user_id,
+                    department_id: rule.template.department_id,
+                    date: dateString,
+                    start_time: rule.template.start_time,
+                    end_time: rule.template.end_time
+                }
+
+                // Optimization: Validate ONLY this user's shifts
+                const userShifts = [...currentShifts.filter(s => s.user_id === rule.user_id), candidate]
+
+                // Check violations
+                const violations = validateRoster(userShifts, constraintConfigs)
+
+                // If any violation involves our candidate shift, skip it
+                // Note: The candidate has ID -1. 
+                // Violations usually return shiftId.
+                const isViolation = violations.some((v: any) => v.shiftId === -1)
+
+                if (!isViolation) {
+                    // Create in DB
+                    const newShift = await prisma.shift.create({
+                        data: {
+                            user_id: rule.user_id,
+                            department_id: rule.template.department_id,
+                            date: dateString,
+                            start_time: rule.template.start_time,
+                            end_time: rule.template.end_time
+                        }
+                    })
+
+                    // Add to local tracker
+                    currentShifts.push({
+                        id: newShift.id,
+                        user_id: newShift.user_id,
+                        department_id: newShift.department_id,
+                        date: newShift.date,
+                        start_time: newShift.start_time,
+                        end_time: newShift.end_time
+                    })
+
+                    createdCount++
+                }
             }
         }
     }

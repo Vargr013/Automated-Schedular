@@ -54,13 +54,15 @@ export default function RosterGrid({
     departments,
     shifts,
     operatingDays,
-    currentMonth
+    currentMonth,
+    violations = []
 }: {
     users: User[]
     departments: Department[]
     shifts: Shift[]
     operatingDays: OperatingDay[]
     currentMonth: string
+    violations?: { shiftId?: number, message: string }[]
 }) {
     const [selectedCell, setSelectedCell] = useState<{ userId: number, date: string } | null>(null)
 
@@ -187,6 +189,10 @@ export default function RosterGrid({
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                         {cellShifts.map(shift => {
                                             const isConflict = conflicts.has(shift.id)
+                                            // Check for violations
+                                            const shiftViolations = violations.filter(v => v.shiftId === shift.id)
+                                            const hasViolation = shiftViolations.length > 0
+
                                             return (
                                                 <DraggableShift key={shift.id} shift={shift}>
                                                     <div style={{
@@ -197,11 +203,22 @@ export default function RosterGrid({
                                                         fontSize: '0.75rem',
                                                         boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
                                                         position: 'relative',
-                                                        border: isConflict ? '2px solid #ef4444' : '1px solid rgba(255,255,255,0.2)'
+                                                        border: isConflict
+                                                            ? '2px solid #ef4444'
+                                                            : hasViolation
+                                                                ? '2px solid #f59e0b' // Orange for warning
+                                                                : '1px solid rgba(255,255,255,0.2)'
                                                     }}>
                                                         <div style={{ fontWeight: '600', marginBottom: '1px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                             {shift.department.name}
-                                                            {isConflict && <AlertTriangle size={12} color="white" fill="#ef4444" />}
+                                                            <div style={{ display: 'flex', gap: '2px' }}>
+                                                                {isConflict && <AlertTriangle size={12} color="white" fill="#ef4444" />}
+                                                                {hasViolation && (
+                                                                    <div title={shiftViolations.map(v => v.message).join('\n')} style={{ cursor: 'help' }}>
+                                                                        <AlertCircle size={12} color="white" fill="#f59e0b" />
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                         <div style={{ opacity: 0.9 }}>{shift.start_time} - {shift.end_time}</div>
                                                         <button

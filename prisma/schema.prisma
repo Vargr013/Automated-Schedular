@@ -47,6 +47,7 @@ model Department {
   shiftTemplates  ShiftTemplate[]
   userSkills      UserSkill[]
   automationRules AutomationRule[]
+  constraints     Constraint[]
 }
 
 model AutomationRule {
@@ -116,4 +117,16 @@ model SchedulePublish {
   month       String   @unique // YYYY-MM
   publishedAt DateTime @default(now())
   publishedBy String?
+}
+
+model Constraint {
+  id          Int         @id @default(autoincrement())
+  name        String      // e.g. "Max 5 Days in a Row"
+  description String?
+  type        String      // 'MAX_CONSECUTIVE_DAYS', 'MAX_HOURS_ROLLING'
+  params      String      // JSON: { "limit": 5, "window": 7 }
+  severity    String      // 'WARNING', 'CRITICAL'
+  isActive    Boolean     @default(true)
+  department_id Int?
+  department    Department? @relation(fields: [department_id], references: [id])
 }

@@ -2,6 +2,7 @@ import { getUsers } from '@/app/actions/users'
 import { getDepartments } from '@/app/actions/departments'
 import { getShifts } from '@/app/actions/shifts'
 import { getOperatingDays } from '@/app/actions/calendar'
+import { validateMonth } from '@/app/actions/constraints'
 import RosterGrid from './RosterGrid'
 import MonthSelector from './MonthSelector'
 import GenerateButton from './GenerateButton'
@@ -27,11 +28,12 @@ export default async function RosterPage({
     const startDate = format(startOfMonth(date), 'yyyy-MM-dd')
     const endDate = format(endOfMonth(date), 'yyyy-MM-dd')
 
-    const [users, departments, shifts, operatingDays] = await Promise.all([
+    const [users, departments, shifts, operatingDays, violations] = await Promise.all([
         getUsers(),
         getDepartments(),
         getShifts(startDate, endDate),
-        getOperatingDays()
+        getOperatingDays(),
+        validateMonth(currentMonth)
     ])
 
     return (
@@ -57,6 +59,7 @@ export default async function RosterPage({
                 shifts={shifts}
                 operatingDays={operatingDays}
                 currentMonth={currentMonth}
+                violations={violations}
             />
         </div >
     )
