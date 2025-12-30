@@ -223,8 +223,17 @@ export async function generateSchedule({ month }: SchedulerParams) {
         // Define Slots Needed based on Rules
         const slotsNeeded: { deptId: number, count: number, start: string, end: string, isSmod?: boolean, requiredType?: string }[] = []
 
-        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-        const isFriday = dayOfWeek === 5
+        const currentDayIndex = getDay(day)
+
+        // Fetch Rules for this Day (Optimized: Could fetch all rules once at start, but this is fine for now)
+        const dailyRules = await prisma.automationRule.findMany({
+            where: { day_of_week: currentDayIndex }
+        })
+
+        if (dailyRules.length === 0 && !isCompDay) {
+            // No rules for this day, skip
+            continue
+        }
 
         if (isCompDay) {
             // ... (keep comp day logic simple for now if it ever triggers)
@@ -232,36 +241,20 @@ export async function generateSchedule({ month }: SchedulerParams) {
             if (!isSmodFilled) slotsNeeded.push({ deptId: SMOD_ID, count: 1, start: '08:30', end: '17:30', isSmod: true })
             slotsNeeded.push({ deptId: FD_ID, count: 5, start: '09:00', end: '17:00' })
             slotsNeeded.push({ deptId: CAFE_ID, count: 1, start: '09:00', end: '17:00' })
-        }
-        else if (isWeekend) { // Sat + Sun
-            // Shift Managers: 08:30-18:00
-            if (!isSmodFilled) slotsNeeded.push({ deptId: SMOD_ID, count: 1, start: '08:30', end: '18:00', isSmod: true })
-            // FD: 08:45-18:00
-            slotsNeeded.push({ deptId: FD_ID, count: 4, start: '08:45', end: '18:00' })
-            // Shop: 08:45-18:00
-            slotsNeeded.push({ deptId: SHOP_ID, count: 1, start: '08:45', end: '18:00' })
-            // Cafe: 08:45-17:30
-            slotsNeeded.push({ deptId: CAFE_ID, count: 1, start: '08:45', end: '17:30' })
-        }
-        else { // Weekdays (Mon-Fri)
-            // --- Full Time Slots ---
-            // Front Desk: 08:30-17:00 (18:00 Fri)
-            slotsNeeded.push({ deptId: FD_ID, count: 3, start: '08:30', end: isFriday ? '18:00' : '17:00', requiredType: 'FULL_TIME' })
-            // Shop: 08:45-17:00 (18:00 Fri)
-            slotsNeeded.push({ deptId: SHOP_ID, count: 1, start: '08:45', end: isFriday ? '18:00' : '17:00', requiredType: 'FULL_TIME' })
-            // Cafe: 12:00-21:30 (18:00 Fri)
-            slotsNeeded.push({ deptId: CAFE_ID, count: 1, start: '12:00', end: isFriday ? '18:00' : '21:30', requiredType: 'FULL_TIME' })
+        } else {
+            // Use DB Rules
+            for (const rule of dailyRules) {
+                // SMOD Check: If rule is SMOD type and slot already filled, skip
+                if (rule.is_smod && isSmodFilled) continue
 
-            // --- Part Time Slots (Not on Fridays as we close at 18:00) ---
-            if (!isFriday) {
-                // Shift Managers: 16:30-22:00
-                if (!isSmodFilled) slotsNeeded.push({ deptId: SMOD_ID, count: 1, start: '16:30', end: '22:00', isSmod: true, requiredType: 'PART_TIME' })
-                // Front Desk: 16:00-22:00
-                slotsNeeded.push({ deptId: FD_ID, count: 2, start: '16:00', end: '22:00', requiredType: 'PART_TIME' })
-                // Cafe: 13:30-21:30
-                slotsNeeded.push({ deptId: CAFE_ID, count: 1, start: '13:30', end: '21:30', requiredType: 'PART_TIME' })
-                // Shop: 16:45-22:00
-                slotsNeeded.push({ deptId: SHOP_ID, count: 1, start: '16:45', end: '22:00', requiredType: 'PART_TIME' })
+                slotsNeeded.push({
+                    deptId: rule.department_id,
+                    count: rule.count,
+                    start: rule.start_time,
+                    end: rule.end_time,
+                    isSmod: rule.is_smod,
+                    requiredType: rule.required_type || undefined
+                })
             }
         }
 

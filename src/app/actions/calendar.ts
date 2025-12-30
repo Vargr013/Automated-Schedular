@@ -31,7 +31,8 @@ export async function createOperatingDay(formData: FormData) {
     revalidatePath('/admin/calendar')
 }
 
-export async function deleteOperatingDay(id: number) {
+export async function deleteOperatingDay(formData: FormData) {
+    const id = Number(formData.get('id'))
     await prisma.operatingDay.delete({
         where: { id }
     })

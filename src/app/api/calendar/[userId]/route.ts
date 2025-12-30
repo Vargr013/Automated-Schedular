@@ -63,7 +63,7 @@ export async function GET(
         }
     })
 
-    return new Promise((resolve) => {
+    return new Promise<NextResponse>((resolve) => {
         createEvents(events as any, (error, value) => {
             if (error) {
                 resolve(new NextResponse('Error generating calendar', { status: 500 }))

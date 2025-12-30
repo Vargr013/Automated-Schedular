@@ -33,12 +33,25 @@ model Leave {
 }
 
 model Department {
-  id             Int             @id @default(autoincrement())
-  name           String
-  color_code     String
-  shifts         Shift[]
-  shiftTemplates ShiftTemplate[]
-  userSkills     UserSkill[]
+  id              Int              @id @default(autoincrement())
+  name            String
+  color_code      String
+  shifts          Shift[]
+  shiftTemplates  ShiftTemplate[]
+  userSkills      UserSkill[]
+  automationRules AutomationRule[]
+}
+
+model AutomationRule {
+  id            Int        @id @default(autoincrement())
+  department_id Int
+  day_of_week   Int        // 0=Sun, 1=Mon, ..., 6=Sat
+  start_time    String     // "HH:mm"
+  end_time      String     // "HH:mm"
+  count         Int        @default(1)
+  required_type String?    // "FULL_TIME", "PART_TIME", or null
+  is_smod       Boolean    @default(false)
+  department    Department @relation(fields: [department_id], references: [id])
 }
 
 model UserSkill {

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import './admin.css'
-import { LayoutDashboard, Users, Briefcase, Calendar, Grid, FileText, CalendarOff } from 'lucide-react'
+import { LayoutDashboard, Users, Briefcase, Calendar, Grid, FileText, CalendarOff, Settings } from 'lucide-react'
 
 export default function AdminLayout({
     children,
@@ -56,6 +56,12 @@ export default function AdminLayout({
                             <Link href="/admin/leave" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                 <CalendarOff size={18} />
                                 Leave Management
+                            </Link>
+                        </li>
+                        <li>
+                            <Link href="/admin/rules" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <Settings size={18} />
+                                Automation Rules
                             </Link>
                         </li>
                         <li>

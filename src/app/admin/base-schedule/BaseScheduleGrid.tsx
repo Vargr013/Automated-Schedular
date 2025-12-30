@@ -28,7 +28,15 @@ type BaseRule = {
     template: Template
 }
 
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const WEEK_DAYS = [
+    { name: 'Monday', id: 1 },
+    { name: 'Tuesday', id: 2 },
+    { name: 'Wednesday', id: 3 },
+    { name: 'Thursday', id: 4 },
+    { name: 'Friday', id: 5 },
+    { name: 'Saturday', id: 6 },
+    { name: 'Sunday', id: 0 },
+]
 
 export default function BaseScheduleGrid({
     users,
@@ -45,6 +53,11 @@ export default function BaseScheduleGrid({
         return rules.find(r => r.user_id === userId && r.day_of_week === dayIndex)
     }
 
+    // Helper to get day name from index (0-6)
+    const getDayName = (dayIndex: number) => {
+        return WEEK_DAYS.find(d => d.id === dayIndex)?.name || 'Unknown'
+    }
+
     return (
         <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{ overflowX: 'auto' }}>
@@ -59,8 +72,8 @@ export default function BaseScheduleGrid({
                         position: 'sticky',
                         left: 0
                     }}>Staff Member</div>
-                    {DAYS.map((day, index) => (
-                        <div key={day} style={{
+                    {WEEK_DAYS.map((day, index) => (
+                        <div key={day.id} style={{
                             padding: '1rem',
                             textAlign: 'center',
                             fontWeight: '600',
@@ -69,7 +82,7 @@ export default function BaseScheduleGrid({
                             background: 'var(--muted)',
                             color: 'var(--muted-foreground)'
                         }}>
-                            {day}
+                            {day.name}
                         </div>
                     ))}
 
@@ -89,15 +102,15 @@ export default function BaseScheduleGrid({
                             }}>
                                 {user.name}
                             </div>
-                            {DAYS.map((_, dayIndex) => {
-                                const rule = getRuleForCell(user.id, dayIndex)
+                            {WEEK_DAYS.map((day, index) => {
+                                const rule = getRuleForCell(user.id, day.id)
                                 return (
                                     <div
-                                        key={`${user.id}-${dayIndex}`}
-                                        onClick={() => setSelectedCell({ userId: user.id, dayIndex })}
+                                        key={`${user.id}-${day.id}`}
+                                        onClick={() => setSelectedCell({ userId: user.id, dayIndex: day.id })}
                                         style={{
                                             borderBottom: '1px solid var(--border)',
-                                            borderRight: dayIndex === 6 ? 'none' : '1px solid var(--border)',
+                                            borderRight: index === 6 ? 'none' : '1px solid var(--border)',
                                             minHeight: '80px',
                                             padding: '0.5rem',
                                             cursor: 'pointer',
@@ -173,7 +186,7 @@ export default function BaseScheduleGrid({
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <span style={{ color: 'var(--muted-foreground)' }}>Day:</span>
-                                <span style={{ fontWeight: '600' }}>{DAYS[selectedCell.dayIndex]}</span>
+                                <span style={{ fontWeight: '600' }}>{getDayName(selectedCell.dayIndex)}</span>
                             </div>
                         </div>
 

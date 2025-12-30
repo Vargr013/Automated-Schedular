@@ -21,10 +21,15 @@ export async function createDepartment(formData: FormData) {
     revalidatePath('/admin/departments')
 }
 
-export async function deleteDepartment(id: number) {
-    await prisma.department.delete({
-        where: { id }
-    })
-
-    revalidatePath('/admin/departments')
+export async function deleteDepartment(formData: FormData) {
+    const id = Number(formData.get('id'))
+    try {
+        await prisma.department.delete({
+            where: { id }
+        })
+        revalidatePath('/admin/departments')
+    } catch (e) {
+        console.error('Failed to delete department:', e)
+        // In a real app we might return an error state
+    }
 }
