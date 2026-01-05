@@ -314,8 +314,9 @@ export default function RosterGrid({
                             borderRight: '1px solid var(--border)',
                             position: 'sticky',
                             left: 0,
+                            top: 0,
                             background: 'var(--background)',
-                            zIndex: 20,
+                            zIndex: 30,
                             color: 'var(--foreground)'
                         }}>
                             Staff Member
@@ -334,7 +335,10 @@ export default function RosterGrid({
                                     borderRight: '1px solid var(--border)',
                                     backgroundColor: isHoliday ? 'rgba(239, 68, 68, 0.1)' : isClosed ? 'var(--muted)' : 'var(--background)',
                                     color: isHoliday ? 'var(--destructive)' : 'var(--foreground)',
-                                    minWidth: '120px'
+                                    minWidth: '120px',
+                                    position: 'sticky',
+                                    top: 0,
+                                    zIndex: 20
                                 }}>
                                     <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.7 }}>{format(day, 'EEE')}</div>
                                     <div style={{ fontSize: '1.125rem', fontWeight: '600' }}>{format(day, 'd')}</div>

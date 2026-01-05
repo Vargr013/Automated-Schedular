@@ -85,17 +85,18 @@ export async function generateSchedule(month: string) {
     const end = endOfMonth(date)
 
     // 1. Fetch Constraints & Buffer Shifts
-    const constraints = await prisma.constraint.findMany({ where: { isActive: true } })
-    // Map to config
-    const constraintConfigs = constraints.map(c => ({
-        id: c.id,
-        name: c.name,
-        type: c.type,
-        params: c.params,
-        severity: c.severity,
-        isActive: c.isActive,
-        department_id: c.department_id
-    }))
+    // HARDCODED RULE: Max 5 Days in 7 Day Window
+    const constraintConfigs = [{
+        id: -1,
+        name: 'Max 5 Days (Hardcoded)',
+        type: 'MAX_CONSECUTIVE_DAYS',
+        params: { limit: 5, window: 7 },
+        severity: 'CRITICAL',
+        isActive: true,
+        department_id: null
+    }]
+
+    // Fetch existing shifts for context (include leading buffer for rolling windows)
 
     // Fetch existing shifts for context (include leading buffer for rolling windows)
     const bufferStart = require('date-fns').subDays(start, 14) // 14 day buffer
@@ -121,7 +122,10 @@ export async function generateSchedule(month: string) {
 
     const days = eachDayOfInterval({ start, end })
     const rules = await prisma.userBaseRule.findMany({
-        include: { template: true }
+        include: {
+            template: true,
+            user: true
+        }
     })
 
     let createdCount = 0
@@ -140,6 +144,23 @@ export async function generateSchedule(month: string) {
             const exists = currentShifts.find(s => s.user_id === rule.user_id && s.date === dateString)
 
             if (!exists) {
+                // RULE: FT Staff Working Weekend (Sat & Sun) get Fri & Mon OFF
+                if (rule.user.type === 'FULL_TIME') {
+                    const isFriday = dayOfWeek === 5
+                    const isMonday = dayOfWeek === 1
+
+                    if (isFriday || isMonday) {
+                        // Check if user has rules for BOTH Sat (6) and Sun (0)
+                        const worksSat = rules.some(r => r.user_id === rule.user_id && r.day_of_week === 6)
+                        const worksSun = rules.some(r => r.user_id === rule.user_id && r.day_of_week === 0)
+
+                        // If they work the full weekend, skip Fri/Mon
+                        if (worksSat && worksSun) {
+                            continue
+                        }
+                    }
+                }
+
                 // Candidate Shift
                 const candidate = {
                     id: -1, // Formatting placeholder

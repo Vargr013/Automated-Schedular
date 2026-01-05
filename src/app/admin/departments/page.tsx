@@ -1,5 +1,6 @@
 import { getDepartments, deleteDepartment } from '@/app/actions/departments'
 import AddDepartmentForm from './AddDepartmentForm'
+import EditDepartmentModal from './EditDepartmentModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,10 +31,13 @@ export default async function DepartmentsPage() {
                                     </div>
                                 </td>
                                 <td>
-                                    <form action={deleteDepartment}>
-                                        <input type="hidden" name="id" value={dept.id} />
-                                        <button type="submit" className="btn btn-danger" style={{ padding: '0.25rem 0.5rem', height: 'auto', fontSize: '0.75rem' }}>Delete</button>
-                                    </form>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <EditDepartmentModal department={dept} />
+                                        <form action={deleteDepartment}>
+                                            <input type="hidden" name="id" value={dept.id} />
+                                            <button type="submit" className="btn btn-danger" style={{ padding: '0.25rem 0.5rem', height: 'auto', fontSize: '0.75rem' }}>Delete</button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         ))}

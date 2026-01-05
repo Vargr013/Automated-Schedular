@@ -21,6 +21,21 @@ export async function createDepartment(formData: FormData) {
     revalidatePath('/admin/departments')
 }
 
+export async function updateDepartment(formData: FormData) {
+    const id = Number(formData.get('id'))
+    const name = formData.get('name') as string
+    const color_code = formData.get('color_code') as string
+
+    await prisma.department.update({
+        where: { id },
+        data: {
+            name,
+            color_code
+        }
+    })
+    revalidatePath('/admin/departments')
+}
+
 export async function deleteDepartment(formData: FormData) {
     const id = Number(formData.get('id'))
     try {

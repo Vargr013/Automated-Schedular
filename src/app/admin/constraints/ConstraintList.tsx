@@ -2,6 +2,12 @@
 
 import { deleteConstraint } from '@/app/actions/constraints'
 import { Trash2, AlertTriangle, AlertCircle } from 'lucide-react'
+import EditConstraintModal from './EditConstraintModal'
+
+type Department = {
+    id: number
+    name: string
+}
 
 type Constraint = {
     id: number
@@ -9,10 +15,10 @@ type Constraint = {
     type: string
     params: string
     severity: string
-    department: { name: string } | null
+    department: { id: number, name: string } | null
 }
 
-export default function ConstraintList({ constraints }: { constraints: Constraint[] }) {
+export default function ConstraintList({ constraints, departments }: { constraints: Constraint[], departments: Department[] }) {
     if (constraints.length === 0) {
         return <div className="card" style={{ color: 'var(--muted-foreground)', textAlign: 'center', padding: '3rem' }}>No active rules found.</div>
     }
@@ -55,15 +61,18 @@ export default function ConstraintList({ constraints }: { constraints: Constrain
                             </div>
                         </div>
 
-                        <button
-                            className="btn btn-danger"
-                            style={{ padding: '0.5rem' }}
-                            onClick={async () => {
-                                if (confirm('Delete this rule?')) await deleteConstraint(c.id)
-                            }}
-                        >
-                            <Trash2 size={16} />
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <EditConstraintModal constraint={c} departments={departments} />
+                            <button
+                                className="btn btn-danger"
+                                style={{ padding: '0.5rem', display: 'flex', alignItems: 'center' }}
+                                onClick={async () => {
+                                    if (confirm('Delete this rule?')) await deleteConstraint(c.id)
+                                }}
+                            >
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
                     </div>
                 )
             })}

@@ -59,12 +59,6 @@ export default function AdminLayout({
                             </Link>
                         </li>
                         <li>
-                            <Link href="/admin/constraints" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                <ShieldAlert size={18} />
-                                Constraints
-                            </Link>
-                        </li>
-                        <li>
                             <Link href="/admin/rules" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                 <Settings size={18} />
                                 Automation Rules

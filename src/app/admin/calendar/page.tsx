@@ -1,5 +1,6 @@
 import { getOperatingDays, deleteOperatingDay } from '@/app/actions/calendar'
 import AddHolidayForm from './AddHolidayForm'
+import EditOperatingDayModal from './EditOperatingDayModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,10 +47,15 @@ export default async function CalendarPage() {
                                     )}
                                 </td>
                                 <td>
-                                    <form action={deleteOperatingDay}>
-                                        <input type="hidden" name="id" value={day.id} />
-                                        <button type="submit" className="btn btn-danger" style={{ padding: '0.25rem 0.5rem', height: 'auto', fontSize: '0.75rem' }}>Delete</button>
-                                    </form>
+                                    <td>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <EditOperatingDayModal day={day} />
+                                            <form action={deleteOperatingDay}>
+                                                <input type="hidden" name="id" value={day.id} />
+                                                <button type="submit" className="btn btn-danger" style={{ padding: '0.25rem 0.5rem', height: 'auto', fontSize: '0.75rem' }}>Delete</button>
+                                            </form>
+                                        </div>
+                                    </td>
                                 </td>
                             </tr>
                         ))}

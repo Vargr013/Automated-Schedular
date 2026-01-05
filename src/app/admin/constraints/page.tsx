@@ -1,6 +1,7 @@
-import { getConstraints, createConstraint, deleteConstraint } from '@/app/actions/constraints'
+import { getConstraints } from '@/app/actions/constraints'
 import { getDepartments } from '@/app/actions/departments'
 import ConstraintList from './ConstraintList'
+import AddConstraintForm from './AddConstraintForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,12 +24,9 @@ export default async function ConstraintsPage() {
                 </div>
 
                 <div>
-                    <ConstraintList constraints={constraints} />
+                    <ConstraintList constraints={constraints} departments={departments} />
                 </div>
             </div>
         </div>
     )
 }
-
-// Client Component for Adding Form
-import AddConstraintForm from './AddConstraintForm'

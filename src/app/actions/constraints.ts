@@ -29,6 +29,28 @@ export async function createConstraint(data: {
     revalidatePath('/admin/roster')
 }
 
+export async function updateConstraint(data: {
+    id: number
+    name: string
+    type: string
+    params: string
+    severity: string
+    department_id?: number | null
+}) {
+    await prisma.constraint.update({
+        where: { id: data.id },
+        data: {
+            name: data.name,
+            type: data.type,
+            params: data.params,
+            severity: data.severity,
+            department_id: data.department_id || null
+        }
+    })
+    revalidatePath('/admin/constraints')
+    revalidatePath('/admin/roster')
+}
+
 export async function deleteConstraint(id: number) {
     await prisma.constraint.delete({ where: { id } })
     revalidatePath('/admin/constraints')
@@ -37,11 +59,9 @@ export async function deleteConstraint(id: number) {
 
 export async function validateMonth(month: string) {
     // 1. Fetch Constraints
-    const constraints = await prisma.constraint.findMany({
-        where: { isActive: true }
-    })
-
-    if (constraints.length === 0) return []
+    // 1. No longer fetching from DB, using hardcoded rule below
+    // const constraints = await prisma.constraint.findMany({ where: { isActive: true } })
+    // if (constraints.length === 0) return []
 
     // 2. Fetch Shifts for month PLUS buffer (e.g. prev 14 days to handle rolling windows)
     const date = parseISO(`${month}-01`)
@@ -71,16 +91,16 @@ export async function validateMonth(month: string) {
     }))
 
     // 3. Run Engine
-    // We Map Prisma Constraint -> Config
-    const configList: ConstraintConfig[] = constraints.map(c => ({
-        id: c.id,
-        name: c.name,
-        type: c.type,
-        params: c.params, // It's string coming from DB
-        severity: c.severity,
-        isActive: c.isActive,
-        department_id: c.department_id
-    }))
+    // HARDCODED RULE: Max 5 Days in 7 Day Window
+    const configList: ConstraintConfig[] = [{
+        id: -1,
+        name: 'Max 5 Days',
+        type: 'MAX_CONSECUTIVE_DAYS',
+        params: { limit: 5, window: 7 },
+        severity: 'WARNING',
+        isActive: true,
+        department_id: null
+    }]
 
     const violations = validateRoster(shiftData, configList, month)
 

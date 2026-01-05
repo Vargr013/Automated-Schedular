@@ -32,6 +32,25 @@ export async function createTemplate(formData: FormData) {
     revalidatePath('/admin/templates')
 }
 
+export async function updateTemplate(formData: FormData) {
+    const id = parseInt(formData.get('id') as string)
+    const name = formData.get('name') as string
+    const start_time = formData.get('start_time') as string
+    const end_time = formData.get('end_time') as string
+    const department_id = parseInt(formData.get('department_id') as string)
+
+    await prisma.shiftTemplate.update({
+        where: { id },
+        data: {
+            name,
+            start_time,
+            end_time,
+            department_id
+        }
+    })
+    revalidatePath('/admin/templates')
+}
+
 export async function deleteTemplate(formData: FormData) {
     const id = parseInt(formData.get('id') as string)
 

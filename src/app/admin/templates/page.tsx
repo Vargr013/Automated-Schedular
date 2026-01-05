@@ -1,6 +1,7 @@
 import { getTemplates, deleteTemplate } from '@/app/actions/templates'
 import { getDepartments } from '@/app/actions/departments'
 import AddTemplateForm from './AddTemplateForm'
+import EditTemplateModal from './EditTemplateModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,10 +57,13 @@ export default async function TemplatesPage() {
                                     <td>{template.start_time} - {template.end_time}</td>
                                     <td style={{ color: 'var(--muted-foreground)' }}>{duration} hrs</td>
                                     <td>
-                                        <form action={deleteTemplate}>
-                                            <input type="hidden" name="id" value={template.id} />
-                                            <button type="submit" className="btn btn-danger" style={{ padding: '0.25rem 0.5rem', height: 'auto', fontSize: '0.75rem' }}>Delete</button>
-                                        </form>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <EditTemplateModal template={template} departments={departments} />
+                                            <form action={deleteTemplate}>
+                                                <input type="hidden" name="id" value={template.id} />
+                                                <button type="submit" className="btn btn-danger" style={{ padding: '0.25rem 0.5rem', height: 'auto', fontSize: '0.75rem' }}>Delete</button>
+                                            </form>
+                                        </div>
                                     </td>
                                 </tr>
                             )
