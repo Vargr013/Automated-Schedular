@@ -173,7 +173,8 @@ export default function RosterGrid({
                         const dateStr = format(day, 'yyyy-MM-dd')
                         const cellShifts = getShiftsForCell(user.id, dateStr)
                         const status = getDayStatus(dateStr)
-                        const isClosed = status?.status === 'HOLIDAY' || status?.status === 'CLOSED'
+                        const isHoliday = status?.status === 'HOLIDAY'
+                        const isClosed = status?.status === 'CLOSED'
 
                         return (
                             <div
@@ -185,7 +186,7 @@ export default function RosterGrid({
                                     position: 'relative',
                                 }}
                             >
-                                <DroppableCell userId={user.id} date={dateStr} isClosed={isClosed}>
+                                <DroppableCell userId={user.id} date={dateStr} isClosed={isClosed} isHoliday={isHoliday}>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                         {cellShifts.map(shift => {
                                             const isConflict = conflicts.has(shift.id)

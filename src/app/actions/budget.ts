@@ -4,7 +4,6 @@ import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { getShifts } from './shifts'
 import { getOperatingDays } from './calendar'
-import { getMultiplier } from '@/lib/holidays'
 import { format, parseISO } from 'date-fns'
 
 export async function getBudget(month: string) {
@@ -45,16 +44,30 @@ export async function getCostStats(month: string) {
     const start = `${month}-01`
     const end = `${month}-${lastDay}`
 
-    const shifts = await getShifts(start, end)
-    const users = await prisma.user.findMany() // Need this for current hourly rate? 
-    // NOTE: If user hourly rate changes, history isn't preserved in this simple model. 
-    // We assume current rate applies to all shifts in view.
+    // Fetch Data
+    const [shifts, users, operatingDays] = await Promise.all([
+        getShifts(start, end),
+        prisma.user.findMany(),
+        prisma.operatingDay.findMany({
+            where: {
+                date: { gte: start, lte: end },
+                status: 'HOLIDAY'
+            }
+        })
+    ])
+
+    const holidayDates = new Set(operatingDays.map(d => d.date))
 
     let totalCost = 0
     let totalHours = 0
     let departmentCosts: Record<string, number> = {}
     let departmentHours: Record<string, number> = {}
     let typeCosts: Record<string, number> = {} // FULL_TIME vs PART_TIME
+
+    // Helper for Sunday
+    const isSunday = (dateStr: string) => {
+        return parseISO(dateStr).getDay() === 0
+    }
 
     for (const shift of shifts) {
         const user = users.find(u => u.id === shift.user_id)
@@ -66,13 +79,18 @@ export async function getCostStats(month: string) {
         const hours = (eTime.getTime() - sTime.getTime()) / (1000 * 60 * 60)
 
         // Multiplier
-        const multiplier = getMultiplier(shift.date)
+        let multiplier = 1.0
+        if (holidayDates.has(shift.date)) {
+            multiplier = 2.0
+        } else if (isSunday(shift.date)) {
+            multiplier = 1.5
+        }
+
         const effectiveHours = hours * multiplier
         const cost = effectiveHours * user.hourly_rate
 
         totalCost += cost
-        totalHours += hours // Actual hours worked, or weighted? Usually budget tracks cost, stats track actual hours. 
-        // Let's track actual hours for "Hours" stat, but Cost is weighted
+        totalHours += hours // Actual hours
 
         // Aggregate Dept
         const deptName = shift.department.name
