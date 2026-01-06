@@ -25,8 +25,7 @@ export async function publishSchedule(month: string, sendEmail: boolean) {
         await sendShiftEmails(month)
     }
 
-    revalidatePath('/admin/roster')
-    revalidatePath(`/schedule`)
+    revalidatePath('/', 'layout')
     return { success: true }
 }
 

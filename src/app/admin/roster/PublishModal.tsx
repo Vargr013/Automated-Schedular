@@ -5,12 +5,7 @@ import { publishSchedule } from '@/app/actions/publish'
 import { addMonths, format } from 'date-fns'
 
 export default function PublishModal({ isOpen, onClose, currentMonth }: { isOpen: boolean, onClose: () => void, currentMonth: string }) {
-    const nextMonth = format(addMonths(new Date(), 1), 'yyyy-MM')
-
-    // Default to next month if current view is this month, or just use current view? 
-    // User said "always auto to the next month based on the current date", but "select the month to publish".
-    // Let's default state to nextMonth.
-    const [month, setMonth] = useState(nextMonth)
+    const [month, setMonth] = useState(currentMonth)
     const [sendEmail, setSendEmail] = useState(false)
     const [loading, setLoading] = useState(false)
     const [success, setSuccess] = useState(false)
