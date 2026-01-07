@@ -39,8 +39,9 @@ export async function GET(
     }
 
     const events = shifts.map(shift => {
-        const startDateTime = parseISO(`${shift.date}T${shift.start_time}`)
-        const endDateTime = parseISO(`${shift.date}T${shift.end_time}`)
+        // Explicitly set the time zone to SAST (+02:00) for the shift time
+        const startDateTime = parseISO(`${shift.date}T${shift.start_time}+02:00`)
+        const endDateTime = parseISO(`${shift.date}T${shift.end_time}+02:00`)
 
         const duration = (endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60 * 60)
         const durationHours = Math.floor(duration)
@@ -48,12 +49,13 @@ export async function GET(
 
         return {
             start: [
-                startDateTime.getFullYear(),
-                startDateTime.getMonth() + 1,
-                startDateTime.getDate(),
-                startDateTime.getHours(),
-                startDateTime.getMinutes()
+                startDateTime.getUTCFullYear(),
+                startDateTime.getUTCMonth() + 1,
+                startDateTime.getUTCDate(),
+                startDateTime.getUTCHours(),
+                startDateTime.getUTCMinutes()
             ] as [number, number, number, number, number],
+            startInputType: 'utc',
             duration: { hours: durationHours, minutes: durationMinutes },
             title: `Shift: ${shift.department.name}`,
             description: `CityROCK JHB Work Shift\nDepartment: ${shift.department.name}${shift.is_smod ? '\nRole: SMOD' : ''}`,
