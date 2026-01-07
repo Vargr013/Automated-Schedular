@@ -72,7 +72,14 @@ export async function GET(
                 return
             }
 
-            resolve(new NextResponse(value, {
+            // Inject timezone metadata
+            // detailed: https://en.wikipedia.org/wiki/ICalendar#Time_zone_identifier
+            const valueWithTz = value.replace(
+                'VERSION:2.0',
+                'VERSION:2.0\nX-WR-TIMEZONE:Africa/Johannesburg\nX-WR-CALNAME:City Rock - Work Shifts Automated'
+            )
+
+            resolve(new NextResponse(valueWithTz, {
                 headers: {
                     'Content-Type': 'text/calendar; charset=utf-8',
                     'Content-Disposition': `attachment; filename="shift-schedule-${id}.ics"`,
