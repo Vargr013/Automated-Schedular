@@ -367,7 +367,35 @@ export async function generateSchedule({ month }: SchedulerParams) {
                         return scoreB - scoreA // Descending Sort (Higher score first)
                     }
 
-                    // 2. Weekend Continuity (Sunday Priority)
+                    // 2. Weekend Fairness (Max 2 Weekends Rule)
+                    // Prefer: Count < 2
+                    // Then: Count Ascending (0 better than 1)
+                    if (dayOfWeek === 0 || dayOfWeek === 6) { // Only applies when scheduling weekends
+                        const aCount = userWeekendsWorked[a.id]?.size || 0
+                        const bCount = userWeekendsWorked[b.id]?.size || 0
+
+                        const aSafe = aCount < 2
+                        const bSafe = bCount < 2
+
+                        if (aSafe && !bSafe) return -1
+                        if (!aSafe && bSafe) return 1
+
+                        // If both are safe (or both unsafe), prefer lower count
+                        if (aCount !== bCount) return aCount - bCount
+
+                        // 3. Consecutive Weekend Avoidance
+                        // Did they work the previous weekend?
+                        const prevWeekDate = subDays(day, 7)
+                        const prevWeekStr = format(prevWeekDate, 'yyyy-Iw')
+
+                        const aConsec = userWeekendsWorked[a.id]?.has(prevWeekStr)
+                        const bConsec = userWeekendsWorked[b.id]?.has(prevWeekStr)
+
+                        if (aConsec && !bConsec) return 1 // a worked last weekend (bad)
+                        if (!aConsec && bConsec) return -1 // b worked last weekend (bad)
+                    }
+
+                    // 4. Weekend Continuity (Sunday Priority)
                     // If scheduling Sunday, prefer those who worked Saturday
                     if (dayOfWeek === 0) {
                         // Check if worked yesterday in NEW shifts
@@ -380,17 +408,6 @@ export async function generateSchedule({ month }: SchedulerParams) {
                         // Strict Preference: Worked > Not Worked
                         if (aWorked && !bWorked) return -1
                         if (!aWorked && bWorked) return 1
-                    }
-
-                    // 3. Weekend Fairness
-                    if (dayOfWeek === 0 || dayOfWeek === 6) {
-                        const aWeekends = userWeekendsWorked[a.id]?.size || 0
-                        const bWeekends = userWeekendsWorked[b.id]?.size || 0
-                        const aUnder = aWeekends < 2
-                        const bUnder = bWeekends < 2
-                        if (aUnder && !bUnder) return -1
-                        if (!aUnder && bUnder) return 1
-                        if (aWeekends !== bWeekends) return aWeekends - bWeekends
                     }
 
                     return 0
