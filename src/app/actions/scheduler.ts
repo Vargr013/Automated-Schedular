@@ -307,7 +307,22 @@ export async function generateSchedule({ month }: SchedulerParams) {
                 candidates = shuffle(candidates)
 
                 candidates.sort((a, b) => {
-                    // 1. Priority Score (SMOD / FD Tiers)
+                    // 1. Weekend Continuity (Sunday Priority - PACKAGE DEAL)
+                    // If scheduling Sunday, prefer those who worked Saturday regardless of other scores
+                    if (dayOfWeek === 0) {
+                        // Check if worked yesterday in NEW shifts
+                        const yesterdayStr = format(addDays(day, -1), 'yyyy-MM-dd')
+                        const aWorked = newShifts.some(s => s.date === yesterdayStr && s.user_id === a.id) ||
+                            allExistingShifts.some((s: any) => s.date === yesterdayStr && s.user_id === a.id)
+                        const bWorked = newShifts.some(s => s.date === yesterdayStr && s.user_id === b.id) ||
+                            allExistingShifts.some((s: any) => s.date === yesterdayStr && s.user_id === b.id)
+
+                        // Strict Preference: Worked > Not Worked
+                        if (aWorked && !bWorked) return -1
+                        if (!aWorked && bWorked) return 1
+                    }
+
+                    // 2. Priority Score (SMOD / FD Tiers)
                     const getPriorityScore = (user: any, deptId: number) => {
                         // Check if user is effectively a SMOD (Category or Skill)
                         // Note: We use the SMOD_ID from the outer scope
@@ -367,7 +382,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
                         return scoreB - scoreA // Descending Sort (Higher score first)
                     }
 
-                    // 2. Weekend Fairness (Max 2 Weekends Rule)
+                    // 3. Weekend Fairness (Max 2 Weekends Rule)
                     // Prefer: Count < 2
                     // Then: Count Ascending (0 better than 1)
                     if (dayOfWeek === 0 || dayOfWeek === 6) { // Only applies when scheduling weekends
@@ -383,7 +398,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
                         // If both are safe (or both unsafe), prefer lower count
                         if (aCount !== bCount) return aCount - bCount
 
-                        // 3. Consecutive Weekend Avoidance
+                        // 4. Consecutive Weekend Avoidance
                         // Did they work the previous weekend?
                         const prevWeekDate = subDays(day, 7)
                         const prevWeekStr = format(prevWeekDate, 'yyyy-Iw')
@@ -393,21 +408,6 @@ export async function generateSchedule({ month }: SchedulerParams) {
 
                         if (aConsec && !bConsec) return 1 // a worked last weekend (bad)
                         if (!aConsec && bConsec) return -1 // b worked last weekend (bad)
-                    }
-
-                    // 4. Weekend Continuity (Sunday Priority)
-                    // If scheduling Sunday, prefer those who worked Saturday
-                    if (dayOfWeek === 0) {
-                        // Check if worked yesterday in NEW shifts
-                        const yesterdayStr = format(addDays(day, -1), 'yyyy-MM-dd')
-                        const aWorked = newShifts.some(s => s.date === yesterdayStr && s.user_id === a.id) ||
-                            allExistingShifts.some((s: any) => s.date === yesterdayStr && s.user_id === a.id)
-                        const bWorked = newShifts.some(s => s.date === yesterdayStr && s.user_id === b.id) ||
-                            allExistingShifts.some((s: any) => s.date === yesterdayStr && s.user_id === b.id)
-
-                        // Strict Preference: Worked > Not Worked
-                        if (aWorked && !bWorked) return -1
-                        if (!aWorked && bWorked) return 1
                     }
 
                     return 0
