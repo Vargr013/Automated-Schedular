@@ -337,10 +337,25 @@ export async function generateSchedule({ month }: SchedulerParams) {
                             return 30
                         }
 
-                        // --- OTHER DEPARTMENTS (Default Behavior) ---
-                        // Maintain existing category preference for others
-                        if (deptId === CAFE_ID && user.category === 'Cafe') return 20
-                        if (deptId === SHOP_ID && user.category === 'Shop') return 20
+                        // --- CAFE SHIFTS ---
+                        if (deptId === CAFE_ID) {
+                            const hasCafeSkill = user.skills.some((s: any) => s.department.id === CAFE_ID)
+                            if (!hasCafeSkill) return -1
+
+                            if (isSmod) return 10
+                            if (skillCount === 1) return 50 // Dedicated Cafe
+                            return 30 // General Cafe
+                        }
+
+                        // --- GEAR SHOP SHIFTS ---
+                        if (deptId === SHOP_ID) {
+                            const hasShopSkill = user.skills.some((s: any) => s.department.id === SHOP_ID)
+                            if (!hasShopSkill) return -1
+
+                            if (isSmod) return 10
+                            if (skillCount === 1) return 50 // Dedicated Shop
+                            return 30 // General Shop
+                        }
 
                         return 0
                     }
