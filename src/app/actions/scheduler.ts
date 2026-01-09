@@ -307,18 +307,50 @@ export async function generateSchedule({ month }: SchedulerParams) {
                 candidates = shuffle(candidates)
 
                 candidates.sort((a, b) => {
-                    // 1. Category Priority
-                    const isCategoryPreferred = (user: any, deptId: number) => {
-                        if (deptId === CAFE_ID && user.category === 'Cafe') return true
-                        if (deptId === SHOP_ID && user.category === 'Shop') return true
-                        if (deptId === FD_ID && user.category === 'Front Desk') return true
-                        if (deptId === SMOD_ID && user.category === 'Shift Manager') return true
-                        return false
+                    // 1. Priority Score (SMOD / FD Tiers)
+                    const getPriorityScore = (user: any, deptId: number) => {
+                        // Check if user is effectively a SMOD (Category or Skill)
+                        // Note: We use the SMOD_ID from the outer scope
+                        const isSmod = user.category === 'Shift Manager' || user.skills.some((s: any) => s.department.id === SMOD_ID)
+                        const skillCount = user.skills.length
+
+                        // --- SHIFT MOD SHIFTS ---
+                        if (deptId === SMOD_ID) {
+                            if (isSmod) return 100
+                            return 0
+                        }
+
+                        // --- FRONT DESK SHIFTS ---
+                        if (deptId === FD_ID) {
+                            const hasFdSkill = user.skills.some((s: any) => s.department.id === FD_ID)
+
+                            // Safety: Should be filtered already, but safe to check
+                            if (!hasFdSkill) return -1
+
+                            // Priority 3: SMODs (Last Resort)
+                            if (isSmod) return 10
+
+                            // Priority 1: Dedicated FD (Only 1 Skill)
+                            if (skillCount === 1) return 50
+
+                            // Priority 2: General FD (FD + Other Skills, but not SMOD)
+                            return 30
+                        }
+
+                        // --- OTHER DEPARTMENTS (Default Behavior) ---
+                        // Maintain existing category preference for others
+                        if (deptId === CAFE_ID && user.category === 'Cafe') return 20
+                        if (deptId === SHOP_ID && user.category === 'Shop') return 20
+
+                        return 0
                     }
-                    const aPref = isCategoryPreferred(a, slot.deptId)
-                    const bPref = isCategoryPreferred(b, slot.deptId)
-                    if (aPref && !bPref) return -1
-                    if (!aPref && bPref) return 1
+
+                    const scoreA = getPriorityScore(a, slot.deptId)
+                    const scoreB = getPriorityScore(b, slot.deptId)
+
+                    if (scoreA !== scoreB) {
+                        return scoreB - scoreA // Descending Sort (Higher score first)
+                    }
 
                     // 2. Weekend Continuity (Sunday Priority)
                     // If scheduling Sunday, prefer those who worked Saturday
