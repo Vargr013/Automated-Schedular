@@ -2,7 +2,8 @@
 
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
-import { startOfMonth, endOfMonth, eachDayOfInterval, getDay, format, parseISO } from 'date-fns'
+import { startOfMonth, endOfMonth, eachDayOfInterval, getDay, format, parseISO, subDays } from 'date-fns'
+import { validateRoster } from '@/lib/validation/engine'
 
 export async function getShifts(startDate: string, endDate: string) {
     // Dates should be in YYYY-MM-DD format
@@ -99,7 +100,8 @@ export async function generateSchedule(month: string) {
     // Fetch existing shifts for context (include leading buffer for rolling windows)
 
     // Fetch existing shifts for context (include leading buffer for rolling windows)
-    const bufferStart = require('date-fns').subDays(start, 14) // 14 day buffer
+    // Fetch existing shifts for context (include leading buffer for rolling windows)
+    const bufferStart = subDays(start, 14) // 14 day buffer
     const existingShiftsDB = await prisma.shift.findMany({
         where: {
             date: {
@@ -130,8 +132,8 @@ export async function generateSchedule(month: string) {
 
     let createdCount = 0
 
-    // Import validation dynamically if needed, or rely on it being present (we imported types above, need engine)
-    const { validateRoster } = require('@/lib/validation/engine')
+    // Validation engine imported at top
+
 
     for (const day of days) {
         const dayOfWeek = getDay(day)

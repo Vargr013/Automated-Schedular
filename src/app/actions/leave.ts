@@ -1,6 +1,7 @@
 'use server'
 
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 export async function createLeaveRequest(formData: FormData) {
@@ -10,13 +11,13 @@ export async function createLeaveRequest(formData: FormData) {
     const reason = formData.get('reason') as string
     const leaveType = formData.get('leaveType') as string
 
-    await (prisma as any).leave.create({
+    await prisma.leave.create({
         data: {
             userId,
             startDate,
             endDate,
             reason,
-            leaveType: leaveType || 'UNPAID',
+            leaveType: (leaveType as any) || 'UNPAID', // Cast enum if needed or validate
             status: 'PENDING'
         }
     })
@@ -26,7 +27,7 @@ export async function createLeaveRequest(formData: FormData) {
 }
 
 export async function updateLeaveStatus(leaveId: number, status: 'APPROVED' | 'DECLINED' | 'PENDING') {
-    await (prisma as any).leave.update({
+    await prisma.leave.update({
         where: { id: leaveId },
         data: { status }
     })
@@ -37,11 +38,11 @@ export async function updateLeaveStatus(leaveId: number, status: 'APPROVED' | 'D
 }
 
 export async function getLeaveRequests(status?: string, leaveType?: string) {
-    const where: any = {}
-    if (status) where.status = status
-    if (leaveType) where.leaveType = leaveType
+    const where: Prisma.LeaveWhereInput = {}
+    if (status) where.status = status as any // Enum cast might be needed depending on schema
+    if (leaveType) where.leaveType = leaveType as any
 
-    return await (prisma as any).leave.findMany({
+    return await prisma.leave.findMany({
         where,
         include: {
             user: true
@@ -53,7 +54,7 @@ export async function getLeaveRequests(status?: string, leaveType?: string) {
 }
 
 export async function getUserLeaveRequests(userId: number) {
-    return await (prisma as any).leave.findMany({
+    return await prisma.leave.findMany({
         where: { userId },
         orderBy: {
             startDate: 'desc'
