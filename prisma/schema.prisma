@@ -37,7 +37,7 @@ model Leave {
   reason    String?
   status    String  @default("PENDING")
   leaveType String  @default("UNPAID")
-  user      User    @relation(fields: [userId], references: [id])
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Department {
@@ -67,7 +67,7 @@ model UserSkill {
   user_id       Int
   department_id Int
   department    Department @relation(fields: [department_id], references: [id])
-  user          User       @relation(fields: [user_id], references: [id])
+  user          User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@id([user_id, department_id])
 }
@@ -98,7 +98,7 @@ model UserBaseRule {
   day_of_week     Int
   recurrence_type String
   template        ShiftTemplate @relation(fields: [template_id], references: [id])
-  user            User          @relation(fields: [user_id], references: [id])
+  user            User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 model Shift {
@@ -110,7 +110,7 @@ model Shift {
   end_time      String
   is_smod       Boolean    @default(false)
   department    Department @relation(fields: [department_id], references: [id])
-  user          User       @relation(fields: [user_id], references: [id])
+  user          User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
 }
 
 model SchedulePublish {

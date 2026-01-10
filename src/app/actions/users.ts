@@ -2,6 +2,17 @@
 
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
+
+const UserFormSchema = z.object({
+    name: z.string().min(1, "Name is required"),
+    email: z.string().email("Invalid email address"),
+    type: z.string().min(1, "Type is required"),
+    category: z.string().min(1, "Category is required"),
+    max_weekly_hours: z.coerce.number().min(0).default(40),
+    hourly_rate: z.coerce.number().min(0).default(0),
+    skills: z.array(z.string()).default([])
+})
 
 export async function getUsers() {
     return await prisma.user.findMany({
@@ -22,24 +33,26 @@ export async function getUser(id: number) {
 }
 
 export async function createUser(formData: FormData) {
-    const name = formData.get('name') as string
-    const email = formData.get('email') as string
-    const type = formData.get('type') as string
-    const category = formData.get('category') as string
-    const max_weekly_hours = parseInt(formData.get('max_weekly_hours') as string) || 40
-    const hourly_rate = parseFloat(formData.get('hourly_rate') as string) || 42
-    const skills = formData.getAll('skills') as string[]
+    const validatedFields = UserFormSchema.parse({
+        name: formData.get('name'),
+        email: formData.get('email'),
+        type: formData.get('type'),
+        category: formData.get('category'),
+        max_weekly_hours: formData.get('max_weekly_hours'),
+        hourly_rate: formData.get('hourly_rate'),
+        skills: formData.getAll('skills')
+    })
 
     await prisma.user.create({
         data: {
-            name,
-            email,
-            type,
-            category,
-            max_weekly_hours,
-            hourly_rate,
+            name: validatedFields.name,
+            email: validatedFields.email,
+            type: validatedFields.type,
+            category: validatedFields.category,
+            max_weekly_hours: validatedFields.max_weekly_hours,
+            hourly_rate: validatedFields.hourly_rate,
             skills: {
-                create: skills.map(deptId => ({
+                create: validatedFields.skills.map(deptId => ({
                     department: {
                         connect: { id: parseInt(deptId) }
                     }
@@ -52,26 +65,28 @@ export async function createUser(formData: FormData) {
 }
 
 export async function updateUser(id: number, formData: FormData) {
-    const name = formData.get('name') as string
-    const email = formData.get('email') as string
-    const type = formData.get('type') as string
-    const category = formData.get('category') as string
-    const max_weekly_hours = parseInt(formData.get('max_weekly_hours') as string) || 40
-    const hourly_rate = parseFloat(formData.get('hourly_rate') as string) || 0
-    const skills = formData.getAll('skills') as string[]
+    const validatedFields = UserFormSchema.parse({
+        name: formData.get('name'),
+        email: formData.get('email'),
+        type: formData.get('type'),
+        category: formData.get('category'),
+        max_weekly_hours: formData.get('max_weekly_hours'),
+        hourly_rate: formData.get('hourly_rate'),
+        skills: formData.getAll('skills')
+    })
 
     await prisma.user.update({
         where: { id },
         data: {
-            name,
-            email,
-            type,
-            category,
-            max_weekly_hours,
-            hourly_rate,
+            name: validatedFields.name,
+            email: validatedFields.email,
+            type: validatedFields.type,
+            category: validatedFields.category,
+            max_weekly_hours: validatedFields.max_weekly_hours,
+            hourly_rate: validatedFields.hourly_rate,
             skills: {
                 deleteMany: {},
-                create: skills.map(deptId => ({
+                create: validatedFields.skills.map(deptId => ({
                     department: {
                         connect: { id: parseInt(deptId) }
                     }
@@ -100,6 +115,11 @@ export async function deleteUser(id: number) {
     // I should update schema to Cascade deletion of UserSkill when User is deleted.
 
     // Delete related records manually to avoid foreign key constraints
+    // NOTE: Schema has been updated to Cascade, but we keep this for safety (or if schema isn't pushed yet)
+    await prisma.leave.deleteMany({
+        where: { userId: id }
+    })
+
     await prisma.userSkill.deleteMany({
         where: { user_id: id }
     })
