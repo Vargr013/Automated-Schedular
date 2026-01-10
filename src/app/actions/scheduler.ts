@@ -3,12 +3,32 @@
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, startOfWeek, endOfWeek, addDays, subDays, isSameMonth } from 'date-fns'
-import { User, Shift, UserSkill, Department } from '@prisma/client'
+import { User, Shift, UserSkill, Department, Prisma } from '@prisma/client'
+
+type EligibleStaffUser = Prisma.UserGetPayload<{
+    include: {
+        skills: { include: { department: true } }
+        leave: true
+        shifts: true
+    }
+}>
 
 // --- Leave Actions ---
 
 export async function addLeave(data: { userId: number, startDate: string, endDate: string, reason?: string }) {
-    await (prisma as any).leave.create({
+    // 1. Delete conflicting shifts
+    await prisma.shift.deleteMany({
+        where: {
+            user_id: data.userId,
+            date: {
+                gte: data.startDate,
+                lte: data.endDate
+            }
+        }
+    })
+
+    // 2. Create Leave
+    await prisma.leave.create({
         data: {
             userId: data.userId,
             startDate: data.startDate,
@@ -21,7 +41,7 @@ export async function addLeave(data: { userId: number, startDate: string, endDat
 }
 
 export async function deleteLeave(id: number) {
-    await (prisma as any).leave.delete({
+    await prisma.leave.delete({
         where: { id }
     })
     revalidatePath('/admin/schedule')
@@ -32,7 +52,7 @@ export async function getLeavesForMonth(month: string) {
     const startDate = `${month}-01`
     const endDate = format(endOfMonth(parseISO(startDate)), 'yyyy-MM-dd')
 
-    return await (prisma as any).leave.findMany({
+    return await prisma.leave.findMany({
         where: {
             OR: [
                 { startDate: { gte: startDate, lte: endDate } },
@@ -72,7 +92,7 @@ export async function clearSchedule(month: string) {
     const endStr = format(end, 'yyyy-MM-dd')
 
     // Delete all shifts in this range
-    await (prisma as any).shift.deleteMany({
+    await prisma.shift.deleteMany({
         where: {
             date: {
                 gte: startStr,
@@ -96,10 +116,10 @@ export async function generateSchedule({ month }: SchedulerParams) {
 
     // 1. Fetch Users (Eligible Staff)
     // We treat "partTimeStaff" as all eligible staff (including Full-Time who have auto_schedule on)
-    const eligibleStaff = await prisma.user.findMany({
+    const eligibleStaff: EligibleStaffUser[] = await prisma.user.findMany({
         where: {
             auto_schedule: true
-        } as any,
+        },
         include: {
             skills: { include: { department: true } },
             leave: {
@@ -117,11 +137,11 @@ export async function generateSchedule({ month }: SchedulerParams) {
                     date: { gte: queryStart, lte: queryEnd }
                 }
             }
-        } as any
+        }
     })
 
     // 2. Fetch ALL Existing Shifts (For SMOD Protection & Blocking)
-    const allExistingShifts = await (prisma as any).shift.findMany({
+    const allExistingShifts = await prisma.shift.findMany({
         where: {
             date: {
                 gte: format(monthStart, 'yyyy-MM-dd'),
@@ -158,10 +178,10 @@ export async function generateSchedule({ month }: SchedulerParams) {
     // Weekend Tracker: userId -> Set of weekIndices (format: "YYYY-Www")
     // Initialize with existing
     const userWeekendsWorked: Record<number, Set<string>> = {}
-    eligibleStaff.forEach((user: any) => {
+    eligibleStaff.forEach((user) => {
         userWeekendsWorked[user.id] = new Set()
         if (user.shifts) {
-            user.shifts.forEach((shift: any) => {
+            user.shifts.forEach((shift) => {
                 const date = parseISO(shift.date)
                 const dayIndex = getDay(date)
                 if (dayIndex === 0 || dayIndex === 6) { // Sat or Sun
@@ -184,17 +204,17 @@ export async function generateSchedule({ month }: SchedulerParams) {
     }
 
     // Helper: Check availability
-    const isAvailable = (user: any, date: Date, shiftHours: number) => {
+    const isAvailable = (user: EligibleStaffUser, date: Date, shiftHours: number) => {
         const dateStr = format(date, 'yyyy-MM-dd')
 
         // Check Leave
         if (user.leave) {
-            const onLeave = user.leave.some((l: any) => l.startDate <= dateStr && l.endDate >= dateStr)
+            const onLeave = user.leave.some((l) => l.startDate <= dateStr && l.endDate >= dateStr)
             if (onLeave) return false
         }
 
         // Check Existing Manual Shifts
-        const hasShift = (user.shifts && user.shifts.some((s: any) => s.date === dateStr))
+        const hasShift = (user.shifts && user.shifts.some((s) => s.date === dateStr))
         if (hasShift) return false
 
         // Check New Shifts (Already assigned in this run)
@@ -209,8 +229,14 @@ export async function generateSchedule({ month }: SchedulerParams) {
         const dateStr = format(day, 'yyyy-MM-dd')
         const dayOfWeek = getDay(day) // 0=Sun, 1=Mon...
 
+        // Pre-calc who worked yesterday (optimization)
+        const yesterdayStr = format(addDays(day, -1), 'yyyy-MM-dd')
+        const workedYesterdayIds = new Set<number>()
+        newShifts.filter(s => s.date === yesterdayStr).forEach(s => workedYesterdayIds.add(s.user_id))
+        allExistingShifts.filter(s => s.date === yesterdayStr).forEach(s => workedYesterdayIds.add(s.user_id))
+
         // Blockers: Check if any slots are blocked manually or by logic
-        const existingSmodShift = allExistingShifts.find((s: any) => s.date === dateStr && s.department_id === SMOD_ID)
+        const existingSmodShift = allExistingShifts.find((s) => s.date === dateStr && s.department_id === SMOD_ID)
         const isSmodFilled = !!existingSmodShift
 
         // Get Rules
@@ -247,7 +273,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
         }
 
         // Reduce Slots based on Existing Shifts
-        const dailyExistingShifts = allExistingShifts.filter((s: any) => s.date === dateStr)
+        const dailyExistingShifts = allExistingShifts.filter((s) => s.date === dateStr)
         const claimedShiftIds = new Set<number>()
 
         for (const slot of slotsNeeded) {
@@ -283,7 +309,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
 
             for (let i = 0; i < actualNeeded; i++) {
                 // Find Candidates
-                let candidates = eligibleStaff.filter((user: any) => {
+                let candidates = eligibleStaff.filter((user) => {
                     if (assignedUserIdsToday.has(user.id)) return false
 
                     // CHECK BLOCK LIST (Fri/Mon rule)
@@ -295,7 +321,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
                     if (!isAvailable(user, day, shiftHours)) return false
 
                     // Skill Check
-                    const hasSkill = user.skills.some((s: any) => s.department.id === slot.deptId)
+                    const hasSkill = user.skills.some((s) => s.department.id === slot.deptId)
                     if (!hasSkill) return false
 
                     return true
@@ -310,12 +336,8 @@ export async function generateSchedule({ month }: SchedulerParams) {
                     // 1. Weekend Continuity (Sunday Priority - PACKAGE DEAL)
                     // If scheduling Sunday, prefer those who worked Saturday regardless of other scores
                     if (dayOfWeek === 0) {
-                        // Check if worked yesterday in NEW shifts
-                        const yesterdayStr = format(addDays(day, -1), 'yyyy-MM-dd')
-                        const aWorked = newShifts.some(s => s.date === yesterdayStr && s.user_id === a.id) ||
-                            allExistingShifts.some((s: any) => s.date === yesterdayStr && s.user_id === a.id)
-                        const bWorked = newShifts.some(s => s.date === yesterdayStr && s.user_id === b.id) ||
-                            allExistingShifts.some((s: any) => s.date === yesterdayStr && s.user_id === b.id)
+                        const aWorked = workedYesterdayIds.has(a.id)
+                        const bWorked = workedYesterdayIds.has(b.id)
 
                         // Strict Preference: Worked > Not Worked
                         if (aWorked && !bWorked) return -1
@@ -323,10 +345,10 @@ export async function generateSchedule({ month }: SchedulerParams) {
                     }
 
                     // 2. Priority Score (SMOD / FD Tiers)
-                    const getPriorityScore = (user: any, deptId: number) => {
+                    const getPriorityScore = (user: EligibleStaffUser, deptId: number) => {
                         // Check if user is effectively a SMOD (Category or Skill)
                         // Note: We use the SMOD_ID from the outer scope
-                        const isSmod = user.category === 'Shift Manager' || user.skills.some((s: any) => s.department.id === SMOD_ID)
+                        const isSmod = user.category === 'Shift Manager' || user.skills.some((s) => s.department.id === SMOD_ID)
                         const skillCount = user.skills.length
 
                         // --- SHIFT MOD SHIFTS ---
@@ -337,7 +359,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
 
                         // --- FRONT DESK SHIFTS ---
                         if (deptId === FD_ID) {
-                            const hasFdSkill = user.skills.some((s: any) => s.department.id === FD_ID)
+                            const hasFdSkill = user.skills.some((s) => s.department.id === FD_ID)
 
                             // Safety: Should be filtered already, but safe to check
                             if (!hasFdSkill) return -1
@@ -354,7 +376,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
 
                         // --- CAFE SHIFTS ---
                         if (deptId === CAFE_ID) {
-                            const hasCafeSkill = user.skills.some((s: any) => s.department.id === CAFE_ID)
+                            const hasCafeSkill = user.skills.some((s) => s.department.id === CAFE_ID)
                             if (!hasCafeSkill) return -1
 
                             if (isSmod) return 10
@@ -364,7 +386,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
 
                         // --- GEAR SHOP SHIFTS ---
                         if (deptId === SHOP_ID) {
-                            const hasShopSkill = user.skills.some((s: any) => s.department.id === SHOP_ID)
+                            const hasShopSkill = user.skills.some((s) => s.department.id === SHOP_ID)
                             if (!hasShopSkill) return -1
 
                             if (isSmod) return 10
@@ -462,13 +484,13 @@ export async function generateSchedule({ month }: SchedulerParams) {
         // Get Set of users working Sat
         const workersSat = new Set([
             ...newShifts.filter(s => s.date === satStr).map(s => s.user_id),
-            ...allExistingShifts.filter((s: any) => s.date === satStr).map((s: any) => s.user_id)
+            ...allExistingShifts.filter((s) => s.date === satStr).map((s) => s.user_id)
         ])
 
         // Get Set of users working Sun
         const workersSun = new Set([
             ...newShifts.filter(s => s.date === sunStr).map(s => s.user_id),
-            ...allExistingShifts.filter((s: any) => s.date === sunStr).map((s: any) => s.user_id)
+            ...allExistingShifts.filter((s) => s.date === sunStr).map((s) => s.user_id)
         ])
 
         // Intersect
