@@ -16,6 +16,9 @@ const UserFormSchema = z.object({
 
 export async function getUsers() {
     return await prisma.user.findMany({
+        orderBy: {
+            name: 'asc'
+        },
         include: {
             skills: {
                 include: {
