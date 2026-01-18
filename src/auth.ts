@@ -23,7 +23,12 @@ export const { auth, signIn, signOut } = NextAuth({
                     // Allow login if user has a password set
                     if (user.password) {
                         const passwordsMatch = await bcrypt.compare(password, user.password);
-                        if (passwordsMatch) return user;
+                        if (passwordsMatch) {
+                            return {
+                                ...user,
+                                id: user.id.toString(),
+                            };
+                        }
                     }
                 }
 
