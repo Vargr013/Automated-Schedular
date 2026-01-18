@@ -15,10 +15,7 @@ const UserFormSchema = z.object({
 })
 
 export async function getUsers() {
-    return await prisma.user.findMany({
-        orderBy: {
-            name: 'asc'
-        },
+    const users = await prisma.user.findMany({
         include: {
             skills: {
                 include: {
@@ -26,6 +23,48 @@ export async function getUsers() {
                 }
             }
         }
+    })
+
+    // Sorting Logic
+    // 1. Full Time > Part Time
+    // 2. Department Priority: Management > SMod > Cafe > Shop > Front Desk
+    // 3. Alphabetical
+
+    const deptPriority: Record<string, number> = {
+        'Management': 0,
+        'Shift Manager (SMOD)': 1,
+        'Shift Manager': 1, // Fallback
+        'Cafe': 2,
+        'Gear Shop': 3,
+        'Shop': 3, // Fallback
+        'Front Desk': 4
+    }
+
+    const getDeptScore = (u: typeof users[0]) => {
+        if (u.skills.length === 0) return 99
+        // Find best department score among all skills
+        let best = 100
+        for (const s of u.skills) {
+            const score = deptPriority[s.department.name] ?? 99
+            if (score < best) best = score
+        }
+        return best
+    }
+
+    return users.sort((a, b) => {
+        // 1. Type (Full Time first)
+        const aFt = a.type === 'FULL_TIME'
+        const bFt = b.type === 'FULL_TIME'
+        if (aFt && !bFt) return -1
+        if (!aFt && bFt) return 1
+
+        // 2. Department Priority
+        const scoreA = getDeptScore(a)
+        const scoreB = getDeptScore(b)
+        if (scoreA !== scoreB) return scoreA - scoreB
+
+        // 3. Alphabetical
+        return a.name.localeCompare(b.name)
     })
 }
 

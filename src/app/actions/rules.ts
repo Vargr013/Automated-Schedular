@@ -19,14 +19,21 @@ export type AutomationRuleData = {
 // --- CRUD ---
 
 export async function getRules() {
-    return await prisma.automationRule.findMany({
+    const rules = await prisma.automationRule.findMany({
         include: {
             department: true
-        },
-        orderBy: [
-            { day_of_week: 'asc' },
-            { start_time: 'asc' }
-        ]
+        }
+    })
+
+    // Custom Sort: Monday (1) -> Saturday (6) -> Sunday (0)
+    // We want 0 to be "7" for sorting purposes
+    return rules.sort((a, b) => {
+        const dayA = a.day_of_week === 0 ? 7 : a.day_of_week
+        const dayB = b.day_of_week === 0 ? 7 : b.day_of_week
+
+        if (dayA !== dayB) return dayA - dayB
+
+        return a.start_time.localeCompare(b.start_time)
     })
 }
 
