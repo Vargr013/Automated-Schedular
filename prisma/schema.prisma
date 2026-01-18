@@ -60,6 +60,7 @@ model AutomationRule {
   count         Int        @default(1)
   required_type String?    // "FULL_TIME", "PART_TIME", or null
   is_smod       Boolean    @default(false)
+  tolerance     Int        @default(0) // Minutes
   department    Department @relation(fields: [department_id], references: [id])
 }
 

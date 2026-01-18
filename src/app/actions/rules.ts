@@ -13,6 +13,7 @@ export type AutomationRuleData = {
     count: number
     required_type?: string | null // "FULL_TIME", "PART_TIME"
     is_smod: boolean
+    tolerance: number // Minutes
 }
 
 // --- CRUD ---
@@ -38,7 +39,8 @@ export async function createRule(data: AutomationRuleData) {
             end_time: data.end_time,
             count: data.count,
             required_type: data.required_type || null,
-            is_smod: data.is_smod
+            is_smod: data.is_smod,
+            tolerance: data.tolerance
         }
     })
     revalidatePath('/admin/rules')
@@ -54,7 +56,8 @@ export async function updateRule(id: number, data: AutomationRuleData) {
             end_time: data.end_time,
             count: data.count,
             required_type: data.required_type || null,
-            is_smod: data.is_smod
+            is_smod: data.is_smod,
+            tolerance: data.tolerance
         }
     })
     revalidatePath('/admin/rules')

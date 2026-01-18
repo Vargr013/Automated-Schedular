@@ -224,6 +224,28 @@ export async function generateSchedule({ month }: SchedulerParams) {
         return true
     }
 
+    // Helper: Convert time string to minutes
+    const getMinutes = (time: string) => {
+        const [h, m] = time.split(':').map(Number)
+        return h * 60 + m
+    }
+
+    // Helper: Check if shift matches rule with tolerance
+    const isTimeMatch = (ruleStart: string, ruleEnd: string, shiftStart: string, shiftEnd: string, tolerance: number) => {
+        const rStart = getMinutes(ruleStart)
+        const rEnd = getMinutes(ruleEnd)
+        const sStart = getMinutes(shiftStart)
+        const sEnd = getMinutes(shiftEnd)
+
+        // If tolerance is 0, strict match (within reasonable epsilon? No, exact minutes)
+        // Check Start
+        if (Math.abs(sStart - rStart) > tolerance) return false
+        // Check End
+        if (Math.abs(sEnd - rEnd) > tolerance) return false
+
+        return true
+    }
+
     // --- HELPER: Process Single Day ---
     const processDay = (day: Date, isPhase1Weekend: boolean) => {
         const dateStr = format(day, 'yyyy-MM-dd')
@@ -244,7 +266,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
         if (dailyRules.length === 0) return
 
         // Define Slots
-        const slotsNeeded: { deptId: number, count: number, start: string, end: string, isSmod?: boolean, requiredType?: string }[] = []
+        const slotsNeeded: { deptId: number, count: number, start: string, end: string, isSmod?: boolean, requiredType?: string, tolerance: number }[] = []
 
         for (const rule of dailyRules) {
             if (rule.is_smod && isSmodFilled) continue
@@ -254,7 +276,8 @@ export async function generateSchedule({ month }: SchedulerParams) {
                 start: rule.start_time,
                 end: rule.end_time,
                 isSmod: rule.is_smod,
-                requiredType: rule.required_type || undefined
+                requiredType: rule.required_type || undefined,
+                tolerance: rule.tolerance
             })
         }
 
@@ -262,15 +285,6 @@ export async function generateSchedule({ month }: SchedulerParams) {
         slotsNeeded.sort((a, b) => (a.isSmod ? -1 : 1))
 
         const assignedUserIdsToday = new Set<number>()
-
-        // Helper: Check Overlap (Time)
-        const overlaps = (s1Start: string, s1End: string, s2Start: string, s2End: string) => {
-            const s1S = parseInt(s1Start.replace(':', ''))
-            const s1E = parseInt(s1End.replace(':', ''))
-            const s2S = parseInt(s2Start.replace(':', ''))
-            const s2E = parseInt(s2End.replace(':', ''))
-            return Math.max(s1S, s2S) < Math.min(s1E, s2E)
-        }
 
         // Reduce Slots based on Existing Shifts
         const dailyExistingShifts = allExistingShifts.filter((s) => s.date === dateStr)
@@ -281,7 +295,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
             const matchingExisting = dailyExistingShifts.filter((s: any) =>
                 s.department_id === slot.deptId &&
                 !claimedShiftIds.has(s.id) &&
-                overlaps(s.start_time, s.end_time, slot.start, slot.end) &&
+                isTimeMatch(slot.start, slot.end, s.start_time, s.end_time, slot.tolerance) &&
                 (slot.requiredType ? s.user.type === slot.requiredType : true)
             )
 
@@ -293,11 +307,11 @@ export async function generateSchedule({ month }: SchedulerParams) {
                 }
             }
 
-            // Count New Shifts Matches (e.g. from previous loops if any, though usually empty for new day in loop)
+            // Count New Shifts Matches
             const matchingNew = newShifts.filter(s =>
                 s.date === dateStr &&
                 s.department_id === slot.deptId &&
-                overlaps(s.start_time, s.end_time, slot.start, slot.end)
+                isTimeMatch(slot.start, slot.end, s.start_time, s.end_time, slot.tolerance)
             )
             matchesFound += matchingNew.length
             matchingNew.forEach(s => assignedUserIdsToday.add(s.user_id))

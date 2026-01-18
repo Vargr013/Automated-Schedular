@@ -27,6 +27,7 @@ function RuleForm({
     const [count, setCount] = useState(initialValues?.count || 1)
     const [reqType, setReqType] = useState(initialValues?.required_type || 'ANY')
     const [isSmod, setIsSmod] = useState(initialValues?.is_smod || false)
+    const [tolerance, setTolerance] = useState(initialValues?.tolerance || 0)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -39,7 +40,8 @@ function RuleForm({
             end_time: end,
             count: Number(count),
             required_type: reqType === 'ANY' ? undefined : reqType,
-            is_smod: isSmod
+            is_smod: isSmod,
+            tolerance: Number(tolerance)
         })
         setIsSubmitting(false)
     }
@@ -105,6 +107,16 @@ function RuleForm({
                         min="1"
                         value={count}
                         onChange={e => setCount(Number(e.target.value))}
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid var(--border)' }}
+                    />
+                </div>
+                <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.25rem', color: 'var(--muted-foreground)' }}>Tolerance (mins)</label>
+                    <input
+                        type="number"
+                        min="0" step="15"
+                        value={tolerance}
+                        onChange={e => setTolerance(Number(e.target.value))}
                         style={{ width: '100%', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid var(--border)' }}
                     />
                 </div>
@@ -255,6 +267,7 @@ export default function RuleList({ rules, departments }: { rules: RuleWithDept[]
                                         <tr style={{ textAlign: 'left', color: 'var(--muted-foreground)' }}>
                                             <th style={{ padding: '0.5rem' }}>Department</th>
                                             <th style={{ padding: '0.5rem' }}>Time</th>
+                                            <th style={{ padding: '0.5rem' }}>Tolerance</th>
                                             <th style={{ padding: '0.5rem' }}>Count</th>
                                             <th style={{ padding: '0.5rem' }}>Type</th>
                                             <th style={{ padding: '0.5rem' }}>SMOD</th>
@@ -268,7 +281,7 @@ export default function RuleList({ rules, departments }: { rules: RuleWithDept[]
                                             if (isEditing) {
                                                 return (
                                                     <tr key={rule.id}>
-                                                        <td colSpan={6} style={{ padding: '0.5rem' }}>
+                                                        <td colSpan={7} style={{ padding: '0.5rem' }}>
                                                             <RuleForm
                                                                 initialValues={rule}
                                                                 departments={departments}
@@ -296,6 +309,9 @@ export default function RuleList({ rules, departments }: { rules: RuleWithDept[]
                                                         {rule.department.name}
                                                     </td>
                                                     <td style={{ padding: '0.5rem' }}>{rule.start_time} - {rule.end_time}</td>
+                                                    <td style={{ padding: '0.5rem' }}>
+                                                        {rule.tolerance > 0 ? `${rule.tolerance}m` : '-'}
+                                                    </td>
                                                     <td style={{ padding: '0.5rem' }}>{rule.count}</td>
                                                     <td style={{ padding: '0.5rem' }}>
                                                         {rule.required_type ? (
