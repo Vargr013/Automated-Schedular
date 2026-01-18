@@ -81,6 +81,31 @@ export default function AdminLayout({
                         <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--muted-foreground)' }}>
                             &larr; Home
                         </Link>
+                        <form action={async () => {
+                            'use server';
+                            const { signOut } = await import('@/auth');
+                            await signOut();
+                        }}>
+                            <button
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    color: 'var(--muted-foreground)',
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontSize: 'inherit',
+                                    width: '100%',
+                                    marginTop: '0.75rem',
+                                    padding: 0
+                                }}
+                            >
+                                <span style={{ display: 'flex', gap: '0.75rem' }}>
+                                    <ShieldAlert size={18} /> Sign Out
+                                </span>
+                            </button>
+                        </form>
                     </div>
                 </nav>
             </aside>

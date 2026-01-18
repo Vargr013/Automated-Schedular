@@ -12,6 +12,8 @@ model User {
   id               Int            @id @default(autoincrement())
   name             String
   email            String         @unique
+  password         String?        // Hashed password
+  role             String         @default("STAFF") // ADMIN, STAFF
   type             String
   category         String         @default("Front Desk")
   max_weekly_hours Int            @default(40)
