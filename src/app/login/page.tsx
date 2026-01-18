@@ -12,22 +12,40 @@ export default function LoginPage() {
                 <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1.5rem', textAlign: 'center' }}>Login</h1>
                 <form action={dispatch} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div>
-                        <label htmlFor="email" style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}>Email</label>
+                        <label htmlFor="email" style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '500', color: '#1f2937' }}>Email</label>
                         <input
+                            id="email"
                             type="email"
                             name="email"
                             required
-                            style={{ width: '100%', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #d1d5db' }}
+                            placeholder="admin@example.com"
+                            style={{
+                                width: '100%',
+                                padding: '0.5rem',
+                                borderRadius: '0.25rem',
+                                border: '1px solid #d1d5db',
+                                backgroundColor: '#ffffff',
+                                color: '#000000'
+                            }}
                         />
                     </div>
                     <div>
-                        <label htmlFor="password" style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}>Password</label>
+                        <label htmlFor="password" style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '500', color: '#1f2937' }}>Password</label>
                         <input
+                            id="password"
                             type="password"
                             name="password"
                             required
                             minLength={6}
-                            style={{ width: '100%', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #d1d5db' }}
+                            placeholder="••••••"
+                            style={{
+                                width: '100%',
+                                padding: '0.5rem',
+                                borderRadius: '0.25rem',
+                                border: '1px solid #d1d5db',
+                                backgroundColor: '#ffffff',
+                                color: '#000000'
+                            }}
                         />
                     </div>
                     {errorMessage && (
