@@ -108,6 +108,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
     const { startDate, endDate, start, end } = getMonthRosterRange(month)
     const monthStart = start
     const monthEnd = end
+
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
     // Fetch Full Weeks Range for accurate weekly hours
