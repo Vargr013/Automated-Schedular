@@ -137,93 +137,94 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
             }
         })
 
-        // 2. Scan for Dates
-        // Find row with dates. Logic: Look for cells formatted like "8-Dec" or "YYYY-MM-DD"
-        // In Enhanced Export:
-        // Row X: "Part Time", "8-Dec", "9-Dec"... (Strings)
-        // Row X+1: "Monday", "Tuesday"...
+        // 2 & 3. Scan Rows Sequentially (Stateful Parsing)
+        // The export has "Stacked Weeks". Each week has a Date Row, Day Row, then User Rows.
+        // We need to update dateColMap whenever we hit a Date Row.
 
-        // We look for the row where column 2 onwards are dates
-        let dateRowIdx = -1
-        let dateColMap = new Map<number, string>() // ColIdx -> YYYY-MM-DD
-
-        worksheet.eachRow((row, rowNumber) => {
-            if (dateRowIdx !== -1) return
-            // Check Col 2
-            const cell2 = row.getCell(2)
-            const val2 = cell2.value
-            // Heuristic: Check if parsing it yields a valid date close to our month
-            if (val2) {
-                // In Export, it's manually set as string "d-MMM"
-                // But Excel might interpret as Date object if user edited it?
-                // Or we can rely on the "Part Time" label in Col 1 as per export code
-                const cell1 = row.getCell(1)
-                if (cell1.value === 'Part Time' && row.getCell(2).value) {
-                    dateRowIdx = rowNumber
-                }
-            }
-        })
-
-        if (dateRowIdx === -1) {
-            return { success: false, message: 'Could not find Date Row (starting with "Part Time").', shiftsToCreate: [], conflicts: [], stats: { totalShiftsFound: 0, usersFound: 0 } }
-        }
-
-        // Extract Dates from Date Row
-        const dateRow = worksheet.getRow(dateRowIdx)
-        dateRow.eachCell((cell, colNumber) => {
-            if (colNumber < 2) return
-            // The export puts "d-MMM" (e.g. 8-Dec). This lacks Year.
-            // We must infer year from monthStr.
-            // Warning: "Dec" could be Dec 2025 or Dec 2026.
-            // We assume the dates belong to the "monthStr" or adjacent months.
-            // Better: Iterate cols and match against `daysInMonth` we expect?
-            // But the export includes full weeks, so it might span months.
-
-            // Simplest: Try parsing the text with the Year from monthStr
-            const cellVal = cell.value
-            if (cellVal) {
-                const text = cellVal.toString() // "8-Dec"
-                const [day, monthShort] = text.split('-')
-                if (day && monthShort) {
-                    const parsed = new Date(`${day} ${monthShort} ${monthStr.split('-')[0]}`)
-                    if (!isNaN(parsed.getTime())) {
-                        dateColMap.set(colNumber, format(parsed, 'yyyy-MM-dd'))
-                    }
-                } else if (cellVal instanceof Date) {
-                    dateColMap.set(colNumber, format(cellVal, 'yyyy-MM-dd'))
-                }
-            }
-        })
-
-        // 3. Scan Users and Shifts
+        let currentDateColMap = new Map<number, string>() // ColIdx -> YYYY-MM-DD
         const scannedShifts: ScannedShift[] = []
         const conflicts: ImportConflict[] = []
         const foundUserIds = new Set<number>()
 
         worksheet.eachRow((row, rowNumber) => {
-            if (rowNumber <= dateRowIdx) return // Skip header
+            if (rowNumber <= headerRowIdx) return // Skip Main Title
 
-            const nameCell = row.getCell(1)
-            const name = nameCell.value ? nameCell.value.toString() : ''
+            const cell1 = row.getCell(1)
+            const val1 = cell1.value ? cell1.value.toString() : ''
+            const cell2 = row.getCell(2)
+            const val2 = cell2.value
 
-            // Skip empty names or Section Headers (Section headers usually have specific fill or are in "CATEGORY_ORDER" list)
-            // Section headers in export: "Full Time & Cafe", "Management (MOD)", etc.
-            // Users won't match these names.
-            const user = users.find(u => u.name.toLowerCase() === name.toLowerCase())
+            // CHECK: Is this a Date Row?
+            // "Part Time" in col 1 AND "d-MMM" in col 2 check (or just heuristic)
+            // Export structure: Col 1 = "Part Time" (or similar label), Col 2 = Date
+            if (val1 === 'Part Time' && val2) {
+                // New Week Block Detected
+                currentDateColMap.clear()
+
+                row.eachCell((cell, colNumber) => {
+                    if (colNumber < 2) return
+                    const cellVal = cell.value
+                    if (cellVal) {
+                        const text = cellVal.toString() // "8-Dec"
+                        // Try parsing with MonthStr year
+                        const [day, monthShort] = text.split('-')
+                        if (day && monthShort) {
+                            // Determine year.
+                            // If monthStr is "2025-12", and we see "Jan", it might be 2026.
+                            // If monthStr is "2026-01", and we see "Dec", it might be 2025.
+                            // Since the roster usually exports a single month + adjacent days, we can infer.
+                            // Safety: try the year of monthStr first.
+                            const baseYear = parseInt(monthStr.split('-')[0])
+
+                            // Naive approach: Parse with baseYear. Check if it makes sense?
+                            // Or utilize the date-fns logic?
+                            // Let's assume the string "d-MMM" + baseYear
+                            // If standard Date.parse works:
+                            const parsed = new Date(`${day} ${monthShort} ${baseYear}`)
+
+                            // Calendar Wraparound check?
+                            // If we are in Dec 2025, and see "Jan", it should be 2026.
+                            // If we are in Jan 2026, and see "Dec", it should be 2025.
+                            // BUT: The export actually writes `format(day, 'd-MMM')`.
+                            // Let's rely on standard JS date parsing which defaults to current year usually? No, we provided year.
+
+                            if (!isNaN(parsed.getTime())) {
+                                // Logic to fix Year edge cases
+                                const rosterMonthIndex = parseInt(monthStr.split('-')[1]) - 1 // 0-11
+                                const parsedMonthIndex = parsed.getMonth()
+
+                                let finalYear = baseYear
+                                if (rosterMonthIndex === 11 && parsedMonthIndex === 0) finalYear++ // Dec -> Jan
+                                if (rosterMonthIndex === 0 && parsedMonthIndex === 11) finalYear-- // Jan -> Dec
+
+                                parsed.setFullYear(finalYear) // Correct the year
+
+                                currentDateColMap.set(colNumber, format(parsed, 'yyyy-MM-dd'))
+                            }
+                        } else if (cellVal instanceof Date) {
+                            currentDateColMap.set(colNumber, format(cellVal, 'yyyy-MM-dd'))
+                        }
+                    }
+                })
+                return // Done processing Date Row
+            }
+
+            // Skip Day Name Row (Mon, Tue...) or Header/Spacer rows
+            // User Row check: Name matches a user
+            const user = users.find(u => u.name.toLowerCase() === val1.toLowerCase())
 
             if (user) {
                 foundUserIds.add(user.id)
-                // Iterate Date Columns
-                dateColMap.forEach((dateStr, colIdx) => {
+                // Use CURRENT date map
+                currentDateColMap.forEach((dateStr, colIdx) => {
                     const cell = row.getCell(colIdx)
                     if (cell.value) {
                         const cellText = cell.value.toString()
                         const timeRange = parseTimeRange(cellText)
 
                         if (timeRange) {
-                            // Detect Department from Color
-                            // details: cell.fill
-                            let deptId = user.skills[0]?.department_id || departments[0].id // Fallback: Primary skill or First Dept
+                            // Correct Color Lookup
+                            let deptId = user.skills[0]?.department_id || departments[0].id
 
                             const fill = cell.fill as ExcelJS.FillPattern
                             if (fill && fill.type === 'pattern' && fill.fgColor && fill.fgColor.argb) {
@@ -272,23 +273,16 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
             dayMap.set(s.departmentId, (dayMap.get(s.departmentId) || 0) + 1)
         })
 
-        // Iterate Dates in the imported range
-        const importedDates = Array.from(dateColMap.values())
+        // Iterate Dates found in the import
+        const importedDates = Array.from(new Set(scannedShifts.map(s => s.date)))
+
         importedDates.forEach(dateStr => {
             const date = parseISO(dateStr)
             const dow = getDay(date)
             const dayRules = rules.filter(r => r.day_of_week === dow)
 
-            const dayCounts = shiftCounts.get(dateStr) || new Map()
-
             dayRules.forEach(rule => {
                 // Check if rule is satisfied
-                // Note: Rule has time range. We are just counting total shifts for dept per day for now?
-                // The "scheduler.ts" logic validates exact time slots. To be precise, we should check if we have a shift matching the rule's time.
-                // Simplification: Check if ANY shift matches the rule time window roughly?
-                // Or exact match as per scheduler logic?
-                // Let's do Exact Match count.
-
                 const matchingShiftsForRule = scannedShifts.filter(s =>
                     s.date === dateStr &&
                     s.departmentId === rule.department_id &&
