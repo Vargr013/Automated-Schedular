@@ -11,6 +11,7 @@ import ClearScheduleButton from './ClearScheduleButton'
 import EnhancedPdfButton from './EnhancedPdfButton'
 import PublishButton from './PublishButton'
 import EnhancedExcelButton from './EnhancedExcelButton'
+import RosterImportButton from './RosterImportButton'
 import { getMonthRosterRange } from '@/lib/date-utils'
 
 export const dynamic = 'force-dynamic'
@@ -49,6 +50,7 @@ export default async function RosterPage({
                     <ClearScheduleButton currentMonth={currentMonth} />
                     <EnhancedPdfButton users={users} shifts={shifts} currentMonth={currentMonth} />
                     <EnhancedExcelButton users={users} shifts={shifts} currentMonth={currentMonth} />
+                    <RosterImportButton currentMonth={currentMonth} />
                 </div>
             </div>
 
