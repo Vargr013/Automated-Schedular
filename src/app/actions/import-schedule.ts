@@ -157,7 +157,13 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
             // CHECK: Is this a Date Row?
             // "Part Time" in col 1 AND "d-MMM" in col 2 check (or just heuristic)
             // Export structure: Col 1 = "Part Time" (or similar label), Col 2 = Date
-            if (val1 === 'Part Time' && val2) {
+            // CHECK: Is this a Date Row?
+            // "Part Time" in col 1 AND "d-MMM" in col 2.
+            // CAUTION: There is also a "Part Time" SECTION HEADER which has "Part Time" in col 1 but is merged.
+            // We must ensure Col 2 has a value that looks like a date to distinguish.
+            const isDateRow = (val1 === 'Part Time' || val1 === 'Full Time & Cafe') && val2 && val2.toString().includes('-')
+
+            if (isDateRow) {
                 // New Week Block Detected
                 currentDateColMap.clear()
 
