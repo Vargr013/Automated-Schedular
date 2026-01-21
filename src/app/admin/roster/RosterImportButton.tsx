@@ -66,8 +66,8 @@ export default function RosterImportButton({ currentMonth }: { currentMonth: str
 
             {/* MODAL */}
             {isOpen && report && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col transform transition-all">
 
                         {/* Header */}
                         <div className="p-6 border-b">
