@@ -11,7 +11,7 @@ import ClearScheduleButton from './ClearScheduleButton'
 import EnhancedPdfButton from './EnhancedPdfButton'
 import PublishButton from './PublishButton'
 import EnhancedExcelButton from './EnhancedExcelButton'
-import { startOfMonth, endOfMonth, format } from 'date-fns'
+import { getMonthRosterRange } from '@/lib/date-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,9 +24,8 @@ export default async function RosterPage({
     const currentMonth = params.month || new Date().toISOString().slice(0, 7) // YYYY-MM
 
     // Calculate start and end dates for the selected month
-    const date = new Date(`${currentMonth}-01`)
-    const startDate = format(startOfMonth(date), 'yyyy-MM-dd')
-    const endDate = format(endOfMonth(date), 'yyyy-MM-dd')
+    // Calculate start and end dates for the selected month using full weeks
+    const { startDate, endDate } = getMonthRosterRange(currentMonth)
 
     const [users, departments, shifts, operatingDays, violations] = await Promise.all([
         getUsers(),
@@ -60,6 +59,8 @@ export default async function RosterPage({
                 operatingDays={operatingDays}
                 currentMonth={currentMonth}
                 violations={violations}
+                startDate={startDate}
+                endDate={endDate}
             />
         </div >
     )

@@ -3,6 +3,7 @@
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, startOfWeek, endOfWeek, addDays, subDays, isSameMonth } from 'date-fns'
+import { getMonthRosterRange } from '@/lib/date-utils'
 import { User, Shift, UserSkill, Department, Prisma } from '@prisma/client'
 
 type EligibleStaffUser = Prisma.UserGetPayload<{
@@ -86,10 +87,9 @@ function calculateShiftHours(start: string, end: string): number {
 
 export async function clearSchedule(month: string) {
     // month format: YYYY-MM
-    const start = startOfMonth(parseISO(month + '-01'))
-    const end = endOfMonth(start)
-    const startStr = format(start, 'yyyy-MM-dd')
-    const endStr = format(end, 'yyyy-MM-dd')
+    const { startDate, endDate } = getMonthRosterRange(month)
+    const startStr = startDate
+    const endStr = endDate
 
     // Delete all shifts in this range
     await prisma.shift.deleteMany({
@@ -105,14 +105,14 @@ export async function clearSchedule(month: string) {
 }
 
 export async function generateSchedule({ month }: SchedulerParams) {
-    const monthDate = parseISO(`${month}-01`)
-    const monthStart = startOfMonth(monthDate)
-    const monthEnd = endOfMonth(monthDate)
+    const { startDate, endDate, start, end } = getMonthRosterRange(month)
+    const monthStart = start
+    const monthEnd = end
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
     // Fetch Full Weeks Range for accurate weekly hours
-    const queryStart = format(startOfWeek(monthStart, { weekStartsOn: 1 }), 'yyyy-MM-dd')
-    const queryEnd = format(endOfWeek(monthEnd, { weekStartsOn: 1 }), 'yyyy-MM-dd')
+    const queryStart = startDate
+    const queryEnd = endDate
 
     // 1. Fetch Users (Eligible Staff)
     // We treat "partTimeStaff" as all eligible staff (including Full-Time who have auto_schedule on)

@@ -2,7 +2,8 @@
 
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
-import { format, parseISO, eachDayOfInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, getDay, addDays } from 'date-fns'
+import { format, parseISO, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, getDay, addDays } from 'date-fns'
+import { getMonthRosterRange } from '@/lib/date-utils'
 import { isPublicHoliday } from '@/lib/holidays'
 
 type User = {
@@ -43,15 +44,14 @@ export default function EnhancedExcelButton({
         const worksheet = workbook.addWorksheet('Roster')
 
         const monthDate = parseISO(`${currentMonth}-01`)
-        const monthStart = startOfMonth(monthDate)
-        const monthEnd = endOfMonth(monthDate)
+        const { start, end } = getMonthRosterRange(currentMonth)
 
         // Get all weeks covering the month
         // Start from the beginning of the week of the 1st
-        let currentWeekStart = startOfWeek(monthStart, { weekStartsOn: 1 }) // Monday
+        let currentWeekStart = start // Monday
         const weeks = []
 
-        while (currentWeekStart <= monthEnd) {
+        while (currentWeekStart < end) {
             const currentWeekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 })
             const daysInWeek = eachDayOfInterval({ start: currentWeekStart, end: currentWeekEnd })
             weeks.push(daysInWeek)

@@ -55,7 +55,9 @@ export default function RosterGrid({
     shifts,
     operatingDays,
     currentMonth,
-    violations = []
+    violations = [],
+    startDate,
+    endDate
 }: {
     users: User[]
     departments: Department[]
@@ -63,6 +65,8 @@ export default function RosterGrid({
     operatingDays: OperatingDay[]
     currentMonth: string
     violations?: { shiftId?: number, message: string }[]
+    startDate: string
+    endDate: string
 }) {
     const [selectedCell, setSelectedCell] = useState<{ userId: number, date: string } | null>(null)
 
@@ -90,10 +94,9 @@ export default function RosterGrid({
         }
     }
 
-    const monthDate = parseISO(`${currentMonth}-01`)
     const daysInMonth = eachDayOfInterval({
-        start: startOfMonth(monthDate),
-        end: endOfMonth(monthDate)
+        start: parseISO(startDate),
+        end: parseISO(endDate)
     })
 
     // Validation Logic

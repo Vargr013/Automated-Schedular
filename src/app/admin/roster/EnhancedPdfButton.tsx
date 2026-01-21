@@ -2,7 +2,8 @@
 
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { format, parseISO, eachDayOfInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth } from 'date-fns'
+import { format, parseISO, eachDayOfInterval, startOfWeek, endOfWeek, addDays, isSameMonth } from 'date-fns'
+import { getMonthRosterRange } from '@/lib/date-utils'
 import { isPublicHoliday } from '@/lib/holidays'
 
 type User = {
@@ -42,14 +43,13 @@ export default function EnhancedPdfButton({
         const doc = new jsPDF('l', 'mm', 'a4') // Landscape
 
         const monthDate = parseISO(`${currentMonth}-01`)
-        const monthStart = startOfMonth(monthDate)
-        const monthEnd = endOfMonth(monthDate)
+        const { start, end } = getMonthRosterRange(currentMonth)
 
         // Get all weeks
-        let currentWeekStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+        let currentWeekStart = start
         const weeks = []
 
-        while (currentWeekStart <= monthEnd) {
+        while (currentWeekStart < end) {
             const currentWeekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 })
             const daysInWeek = eachDayOfInterval({ start: currentWeekStart, end: currentWeekEnd })
             weeks.push(daysInWeek)

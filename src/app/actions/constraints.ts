@@ -2,6 +2,7 @@
 
 import prisma from '@/lib/prisma'
 import { startOfMonth, endOfMonth, subDays, addDays, format, parseISO } from 'date-fns'
+import { getMonthRosterRange } from '@/lib/date-utils'
 import { validateRoster } from '@/lib/validation/engine'
 import { ConstraintConfig, Violation, ShiftData } from '@/lib/validation/types'
 import { revalidatePath } from 'next/cache'
@@ -64,12 +65,16 @@ export async function validateMonth(month: string) {
     // if (constraints.length === 0) return []
 
     // 2. Fetch Shifts for month PLUS buffer (e.g. prev 14 days to handle rolling windows)
-    const date = parseISO(`${month}-01`)
-    const monthStart = startOfMonth(date)
-    const monthEnd = endOfMonth(date)
+    // 2. Fetch Shifts for month PLUS buffer (e.g. prev 14 days to handle rolling windows)
+    const { startDate, endDate, start } = getMonthRosterRange(month)
 
-    const queryStart = subDays(monthStart, 14) // 2 weeks buffer
-    const queryEnd = monthEnd
+    // We already start from previous Monday if needed, but for rolling window constraints (e.g. 7 days),
+    // we might need a huge buffer or just rely on the new extended start.
+    // If the window is 7 days, and we start at the exact beginning of the roster view, we might miss
+    // shifts just before the roster view that contribute to the count.
+    // So let's add a small buffer before the roster start.
+    const queryStart = subDays(start, 7)
+    const queryEnd = parseISO(endDate)
 
     const shifts = await prisma.shift.findMany({
         where: {
