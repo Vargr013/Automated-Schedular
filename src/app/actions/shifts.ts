@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { startOfMonth, endOfMonth, eachDayOfInterval, getDay, format, parseISO, subDays } from 'date-fns'
 import { validateRoster } from '@/lib/validation/engine'
+import { getLeavesForMonth } from './scheduler'
 
 export async function getShifts(startDate: string, endDate: string) {
     // Dates should be in YYYY-MM-DD format
@@ -130,6 +131,8 @@ export async function generateSchedule(month: string) {
         }
     })
 
+    const leaves = await getLeavesForMonth(month)
+
     let createdCount = 0
 
     // Validation engine imported at top
@@ -162,6 +165,11 @@ export async function generateSchedule(month: string) {
                         }
                     }
                 }
+
+                // Check Leave
+                const userLeaves = leaves.filter(l => l.userId === rule.user_id && l.status === 'APPROVED')
+                const onLeave = userLeaves.some(l => l.startDate <= dateString && l.endDate >= dateString)
+                if (onLeave) continue
 
                 // Candidate Shift
                 const candidate = {

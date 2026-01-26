@@ -56,6 +56,7 @@ export default function RosterGrid({
     operatingDays,
     currentMonth,
     violations = [],
+    leaves = [],
     startDate,
     endDate
 }: {
@@ -65,6 +66,7 @@ export default function RosterGrid({
     operatingDays: OperatingDay[]
     currentMonth: string
     violations?: { shiftId?: number, message: string }[]
+    leaves?: any[]
     startDate: string
     endDate: string
 }) {
@@ -197,6 +199,11 @@ export default function RosterGrid({
                                             const shiftViolations = violations.filter(v => v.shiftId === shift.id)
                                             const hasViolation = shiftViolations.length > 0
 
+                                            // Check for leave conflict
+                                            const userLeaves = leaves.filter(l => l.userId === user.id && l.status === 'APPROVED')
+                                            const shiftDate = shift.date
+                                            const onLeave = userLeaves.some(l => l.startDate <= shiftDate && l.endDate >= shiftDate)
+
                                             return (
                                                 <DraggableShift key={shift.id} shift={shift}>
                                                     <div style={{
@@ -207,11 +214,13 @@ export default function RosterGrid({
                                                         fontSize: '0.75rem',
                                                         boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
                                                         position: 'relative',
-                                                        border: isConflict
-                                                            ? '2px solid #ef4444'
-                                                            : hasViolation
-                                                                ? '2px solid #f59e0b' // Orange for warning
-                                                                : '1px solid rgba(255,255,255,0.2)'
+                                                        border: onLeave
+                                                            ? '2px solid #000'
+                                                            : isConflict
+                                                                ? '2px solid #ef4444'
+                                                                : hasViolation
+                                                                    ? '2px solid #f59e0b'
+                                                                    : '1px solid rgba(255,255,255,0.2)'
                                                     }}>
                                                         <div style={{ fontWeight: '600', marginBottom: '1px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                             {shift.department.name}

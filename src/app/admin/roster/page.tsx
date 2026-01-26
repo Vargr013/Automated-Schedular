@@ -3,6 +3,7 @@ import { getDepartments } from '@/app/actions/departments'
 import { getShifts } from '@/app/actions/shifts'
 import { getOperatingDays } from '@/app/actions/calendar'
 import { validateMonth } from '@/app/actions/constraints'
+import { getLeavesForMonth } from '@/app/actions/scheduler'
 import RosterGrid from './RosterGrid'
 import MonthSelector from './MonthSelector'
 import GenerateButton from './GenerateButton'
@@ -28,12 +29,13 @@ export default async function RosterPage({
     // Calculate start and end dates for the selected month using full weeks
     const { startDate, endDate } = getMonthRosterRange(currentMonth)
 
-    const [users, departments, shifts, operatingDays, violations] = await Promise.all([
+    const [users, departments, shifts, operatingDays, violations, leaves] = await Promise.all([
         getUsers(),
         getDepartments(),
         getShifts(startDate, endDate),
         getOperatingDays(),
-        validateMonth(currentMonth)
+        validateMonth(currentMonth),
+        getLeavesForMonth(currentMonth)
     ])
 
     return (
@@ -61,6 +63,7 @@ export default async function RosterPage({
                 operatingDays={operatingDays}
                 currentMonth={currentMonth}
                 violations={violations}
+                leaves={leaves}
                 startDate={startDate}
                 endDate={endDate}
             />
