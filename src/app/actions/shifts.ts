@@ -81,6 +81,30 @@ export async function moveShift(shiftId: number, newUserId: number, newDate: str
     revalidatePath('/admin/roster')
 }
 
+export async function updateShift(formData: FormData) {
+    const id = parseInt(formData.get('id') as string)
+    const user_id = parseInt(formData.get('user_id') as string)
+    const department_id = parseInt(formData.get('department_id') as string)
+    const date = formData.get('date') as string
+    const start_time = formData.get('start_time') as string
+    const end_time = formData.get('end_time') as string
+    const is_smod = formData.get('is_smod') === 'on'
+
+    await prisma.shift.update({
+        where: { id },
+        data: {
+            user_id,
+            department_id,
+            date,
+            start_time,
+            end_time,
+            is_smod
+        }
+    })
+
+    revalidatePath('/admin/roster')
+}
+
 export async function generateSchedule(month: string) {
     const date = parseISO(`${month}-01`)
     const start = startOfMonth(date)

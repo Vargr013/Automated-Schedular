@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { format, parseISO, eachDayOfInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameWeek } from 'date-fns'
-import { createShift, deleteShift, moveShift } from '@/app/actions/shifts'
+import { createShift, deleteShift, moveShift, updateShift } from '@/app/actions/shifts'
 import { AlertTriangle, AlertCircle } from 'lucide-react'
 import { DndContext, DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import DraggableShift from './DraggableShift'
@@ -71,6 +71,7 @@ export default function RosterGrid({
     endDate: string
 }) {
     const [selectedCell, setSelectedCell] = useState<{ userId: number, date: string } | null>(null)
+    const [selectedShift, setSelectedShift] = useState<Shift | null>(null)
 
     // DnD Sensors
     const sensors = useSensors(
@@ -152,6 +153,13 @@ export default function RosterGrid({
 
     const handleCellClick = (userId: number, dateStr: string) => {
         setSelectedCell({ userId, date: dateStr })
+        setSelectedShift(null)
+    }
+
+    const handleShiftClick = (e: React.MouseEvent, shift: Shift) => {
+        e.stopPropagation()
+        setSelectedShift(shift)
+        setSelectedCell({ userId: shift.user_id, date: shift.date })
     }
 
     const renderUserRows = (userList: User[]) => {
@@ -206,22 +214,25 @@ export default function RosterGrid({
 
                                             return (
                                                 <DraggableShift key={shift.id} shift={shift}>
-                                                    <div style={{
-                                                        backgroundColor: shift.department.color_code,
-                                                        color: '#fff',
-                                                        padding: '6px 8px',
-                                                        borderRadius: '6px',
-                                                        fontSize: '0.75rem',
-                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                                                        position: 'relative',
-                                                        border: onLeave
-                                                            ? '2px solid #000'
-                                                            : isConflict
-                                                                ? '2px solid #ef4444'
-                                                                : hasViolation
-                                                                    ? '2px solid #f59e0b'
-                                                                    : '1px solid rgba(255,255,255,0.2)'
-                                                    }}>
+                                                    <div
+                                                        onClick={(e) => handleShiftClick(e, shift)}
+                                                        style={{
+                                                            backgroundColor: shift.department.color_code,
+                                                            color: '#fff',
+                                                            padding: '6px 8px',
+                                                            borderRadius: '6px',
+                                                            fontSize: '0.75rem',
+                                                            boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                                            position: 'relative',
+                                                            border: onLeave
+                                                                ? '2px solid #000'
+                                                                : isConflict
+                                                                    ? '2px solid #ef4444'
+                                                                    : hasViolation
+                                                                        ? '2px solid #f59e0b'
+                                                                        : '1px solid rgba(255,255,255,0.2)',
+                                                            cursor: 'pointer'
+                                                        }}>
                                                         <div style={{ fontWeight: '600', marginBottom: '1px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                             {shift.department.name}
                                                             <div style={{ display: 'flex', gap: '2px' }}>
@@ -234,32 +245,6 @@ export default function RosterGrid({
                                                             </div>
                                                         </div>
                                                         <div style={{ opacity: 0.9 }}>{shift.start_time} - {shift.end_time}</div>
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                if (confirm('Delete shift?')) deleteShift(shift.id)
-                                                            }}
-                                                            onPointerDown={(e) => e.stopPropagation()} // Prevent drag start on delete button
-                                                            style={{
-                                                                position: 'absolute',
-                                                                top: '4px',
-                                                                right: '4px',
-                                                                background: 'rgba(0,0,0,0.2)',
-                                                                border: 'none',
-                                                                color: '#fff',
-                                                                cursor: 'pointer',
-                                                                fontSize: '10px',
-                                                                width: '16px',
-                                                                height: '16px',
-                                                                borderRadius: '50%',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'center',
-                                                                lineHeight: 1
-                                                            }}
-                                                        >
-                                                            ✕
-                                                        </button>
                                                     </div>
                                                 </DraggableShift>
                                             )
@@ -449,7 +434,7 @@ export default function RosterGrid({
                     <div className="modal-overlay" onClick={() => setSelectedCell(null)}>
                         <div className="modal-content" onClick={e => e.stopPropagation()}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                <h3 style={{ fontSize: '1.25rem' }}>Add Shift</h3>
+                                <h3 style={{ fontSize: '1.25rem' }}>{selectedShift ? 'Edit Shift' : 'Add Shift'}</h3>
                                 <button onClick={() => setSelectedCell(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--muted-foreground)' }}>&times;</button>
                             </div>
 
@@ -465,15 +450,26 @@ export default function RosterGrid({
                             </div>
 
                             <form action={async (formData) => {
-                                await createShift(formData)
+                                if (selectedShift) {
+                                    formData.append('id', selectedShift.id.toString())
+                                    await updateShift(formData)
+                                } else {
+                                    await createShift(formData)
+                                }
                                 setSelectedCell(null)
+                                setSelectedShift(null)
                             }}>
                                 <input type="hidden" name="user_id" value={selectedCell.userId} />
                                 <input type="hidden" name="date" value={selectedCell.date} />
 
                                 <div className="form-group">
                                     <label>Department</label>
-                                    <select name="department_id" required className="select">
+                                    <select
+                                        name="department_id"
+                                        required
+                                        className="select"
+                                        defaultValue={selectedShift?.department_id}
+                                    >
                                         {departments.map(dept => (
                                             <option key={dept.id} value={dept.id}>{dept.name}</option>
                                         ))}
@@ -483,24 +479,57 @@ export default function RosterGrid({
                                 <div style={{ display: 'flex', gap: '1rem' }}>
                                     <div className="form-group" style={{ flex: 1 }}>
                                         <label>Start Time</label>
-                                        <input name="start_time" type="time" required className="input" />
+                                        <input
+                                            name="start_time"
+                                            type="time"
+                                            required
+                                            className="input"
+                                            defaultValue={selectedShift?.start_time}
+                                        />
                                     </div>
                                     <div className="form-group" style={{ flex: 1 }}>
                                         <label>End Time</label>
-                                        <input name="end_time" type="time" required className="input" />
+                                        <input
+                                            name="end_time"
+                                            type="time"
+                                            required
+                                            className="input"
+                                            defaultValue={selectedShift?.end_time}
+                                        />
                                     </div>
                                 </div>
 
                                 <div className="form-group">
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                                        <input type="checkbox" name="is_smod" style={{ width: '1.25rem', height: '1.25rem' }} />
+                                        <input
+                                            type="checkbox"
+                                            name="is_smod"
+                                            style={{ width: '1.25rem', height: '1.25rem' }}
+                                            defaultChecked={selectedShift?.is_smod}
+                                        />
                                         <span>Shift Manager (SMOD)</span>
                                     </label>
                                 </div>
 
                                 <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+                                    {selectedShift && (
+                                        <button
+                                            type="button"
+                                            className="btn btn-destructive"
+                                            style={{ flex: 1, backgroundColor: '#ef4444', color: 'white' }}
+                                            onClick={async () => {
+                                                if (confirm('Delete shift?')) {
+                                                    await deleteShift(selectedShift.id)
+                                                    setSelectedCell(null)
+                                                    setSelectedShift(null)
+                                                }
+                                            }}
+                                        >
+                                            Delete
+                                        </button>
+                                    )}
                                     <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setSelectedCell(null)}>Cancel</button>
-                                    <button type="submit" className="btn" style={{ flex: 1 }}>Save Shift</button>
+                                    <button type="submit" className="btn" style={{ flex: 1 }}>{selectedShift ? 'Update Shift' : 'Save Shift'}</button>
                                 </div>
                             </form>
                         </div>
