@@ -4,7 +4,7 @@ import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import { format, parseISO, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, getDay, addDays, subMonths, isWithinInterval } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
-import { isPublicHoliday } from '@/lib/holidays'
+import { isPublicHoliday, getMultiplier } from '@/lib/holidays'
 import { getShifts } from '@/app/actions/shifts'
 import { getLeavesForRange } from '@/app/actions/scheduler'
 
@@ -100,16 +100,24 @@ export default function EnhancedExcelButton({
                 )
 
                 if (shift) {
-                    const hours = getHours(shift.start_time, shift.end_time)
+                    const duration = getHours(shift.start_time, shift.end_time)
 
                     if (user.type !== 'FULL_TIME' && onLeave) {
-                        // PART_TIME on Leave = 0 hours (Calculated as unpaid/no-show for hours purposes)
-                        // logic based on "For full time staff, if they put in leave we still need that hours calculated. But for the part time team it is not required."
+                        // PART_TIME on Leave = 0 hours
                         totalHours += 0
                     } else {
-                        // FULL_TIME on Leave = Count hours (Shift preserved in DB)
-                        // OR Normal Work
-                        totalHours += hours
+                        // Calculate Multiplier
+                        // "Does our excel sheet take into account hours worked on sunday being 1.5x"
+                        // IMPLIED: Leave is NOT "hours worked", so it stays at 1.0x (standard rate)
+                        // If onLeave is true (FT), we count the hours but at standard rate.
+                        // If !onLeave (Worked), we apply the multiplier.
+
+                        let multiplier = 1.0
+                        if (!onLeave) {
+                            multiplier = getMultiplier(dateStr)
+                        }
+
+                        totalHours += (duration * multiplier)
                     }
                 }
             }
