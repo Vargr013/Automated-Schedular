@@ -217,20 +217,18 @@ export default function RosterGrid({
                                                     <div
                                                         onClick={(e) => handleShiftClick(e, shift)}
                                                         style={{
-                                                            backgroundColor: shift.department.color_code,
+                                                            backgroundColor: onLeave ? '#000000' : shift.department.color_code,
                                                             color: '#fff',
                                                             padding: '6px 8px',
                                                             borderRadius: '6px',
                                                             fontSize: '0.75rem',
                                                             boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
                                                             position: 'relative',
-                                                            border: onLeave
-                                                                ? '2px solid #000'
-                                                                : isConflict
-                                                                    ? '2px solid #ef4444'
-                                                                    : hasViolation
-                                                                        ? '2px solid #f59e0b'
-                                                                        : '1px solid rgba(255,255,255,0.2)',
+                                                            border: isConflict
+                                                                ? '2px solid #ef4444'
+                                                                : hasViolation
+                                                                    ? '2px solid #f59e0b'
+                                                                    : '1px solid rgba(255,255,255,0.2)',
                                                             cursor: 'pointer'
                                                         }}>
                                                         <div style={{ fontWeight: '600', marginBottom: '1px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

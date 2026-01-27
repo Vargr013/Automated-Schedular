@@ -5,6 +5,7 @@ import autoTable from 'jspdf-autotable'
 import { format, parseISO, eachDayOfInterval, startOfWeek, endOfWeek, addDays, isSameMonth } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
 import { isPublicHoliday } from '@/lib/holidays'
+import { getLeavesForRange } from '@/app/actions/scheduler'
 
 type User = {
     id: number
@@ -39,11 +40,16 @@ export default function EnhancedPdfButton({
     shifts: Shift[]
     currentMonth: string
 }) {
-    const handleExport = () => {
+    const handleExport = async () => {
         const doc = new jsPDF('l', 'mm', 'a4') // Landscape
 
         const monthDate = parseISO(`${currentMonth}-01`)
         const { start, end } = getMonthRosterRange(currentMonth)
+
+        // Fetch leaves
+        const startStr = format(start, 'yyyy-MM-dd')
+        const endStr = format(end, 'yyyy-MM-dd')
+        const leaves = await getLeavesForRange(startStr, endStr)
 
         // Get all weeks
         let currentWeekStart = start
@@ -175,6 +181,16 @@ export default function EnhancedPdfButton({
                 })
             })
 
+            // Fetch leaves for the range
+            const startStr = format(start, 'yyyy-MM-dd')
+            const endStr = format(end, 'yyyy-MM-dd')
+            // Note: Since handleExport is sync/async, we need to handle the promise.
+            // But jsPDF generation is synchronous usually.
+            // We need to make handleExport async to fetch data.
+            // Then wait for it.
+
+            // Refactor handleExport to async
+
             autoTable(doc, {
                 startY: finalY,
                 head: [dateRow, dayNameRow],
@@ -277,8 +293,14 @@ export default function EnhancedPdfButton({
                                 const user = users.find(u => u.name === userName)
 
                                 if (user) {
+                                    const onLeave = leaves.some((l: any) => l.userId === user.id && l.startDate <= dateStr && l.endDate >= dateStr)
                                     const shift = shifts.find(s => s.user_id === user.id && s.date === dateStr)
-                                    if (shift && shift.department.color_code) {
+
+                                    if (onLeave) {
+                                        data.cell.styles.fillColor = [0, 0, 0] // Black
+                                        data.cell.styles.textColor = [255, 255, 255]
+                                        // Text is already set in body construction
+                                    } else if (shift && shift.department.color_code) {
                                         const hex = shift.department.color_code.replace('#', '')
                                         const r = parseInt(hex.substring(0, 2), 16)
                                         const g = parseInt(hex.substring(2, 4), 16)
