@@ -18,15 +18,16 @@ type EligibleStaffUser = Prisma.UserGetPayload<{
 
 export async function addLeave(data: { userId: number, startDate: string, endDate: string, reason?: string }) {
     // 1. Delete conflicting shifts
-    await prisma.shift.deleteMany({
-        where: {
-            user_id: data.userId,
-            date: {
-                gte: data.startDate,
-                lte: data.endDate
-            }
-        }
-    })
+    // CHANGED: We now KEEP shifts even if leave is approved, so we can calculate "would-be" hours for payroll.
+    // await prisma.shift.deleteMany({
+    //     where: {
+    //         user_id: data.userId,
+    //         date: {
+    //             gte: data.startDate,
+    //             lte: data.endDate
+    //         }
+    //     }
+    // })
 
     // 2. Create Leave
     await prisma.leave.create({
@@ -34,7 +35,8 @@ export async function addLeave(data: { userId: number, startDate: string, endDat
             userId: data.userId,
             startDate: data.startDate,
             endDate: data.endDate,
-            reason: data.reason
+            reason: data.reason,
+            status: 'APPROVED' // Auto-approve for now as per existing logic flow implicitly assumed
         }
     })
     revalidatePath('/admin/schedule')
@@ -59,6 +61,21 @@ export async function getLeavesForMonth(month: string) {
                 { startDate: { gte: startDate, lte: endDate } },
                 { endDate: { gte: startDate, lte: endDate } },
                 { startDate: { lte: startDate }, endDate: { gte: endDate } } // Spanning entire month
+            ]
+        },
+        include: {
+            user: { select: { name: true } }
+        }
+    })
+}
+
+export async function getLeavesForRange(startDate: string, endDate: string) {
+    return await prisma.leave.findMany({
+        where: {
+            OR: [
+                { startDate: { gte: startDate, lte: endDate } },
+                { endDate: { gte: startDate, lte: endDate } },
+                { startDate: { lte: startDate }, endDate: { gte: endDate } }
             ]
         },
         include: {

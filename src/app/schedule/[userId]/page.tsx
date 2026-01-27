@@ -128,6 +128,20 @@ export default async function PersonalSchedulePage({
                 }}>
                     <span>
                         {shifts.reduce((acc: number, s: any) => {
+                            // Check if this shift date is covered by APPROVED leave
+                            const shiftDate = s.date // YYYY-MM-DD
+                            const onLeave = leaveRequests.some((req: any) =>
+                                req.status === 'APPROVED' &&
+                                req.startDate <= shiftDate &&
+                                req.endDate >= shiftDate
+                            )
+
+                            // If on leave, do NOT count these hours towards the "Worked" total shown here
+                            // (Though for payroll FT gets meaningful hours, for "My Schedule" view showing worked hours makes more sense to exclude leave? 
+                            //  Actually, if it says "LEAVE" on the card, the hours count should probably reflect what they are *working*. 
+                            //  Let's exclude leave hours from this display badge.)
+                            if (onLeave) return acc
+
                             const start = parseISO(`${s.date}T${s.start_time}`)
                             const end = parseISO(`${s.date}T${s.end_time}`)
                             const rawHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60)
@@ -175,7 +189,14 @@ export default async function PersonalSchedulePage({
                                     const shift = shifts.find((s: any) => s.date === dateStr)
                                     const isToday = isSameDay(day, new Date())
 
-                                    if (!shift && !isToday) return null // Hide empty days unless it's today
+                                    // Check for Approved Leave
+                                    const approvedLeave = leaveRequests.find((req: any) =>
+                                        req.status === 'APPROVED' &&
+                                        req.startDate <= dateStr &&
+                                        req.endDate >= dateStr
+                                    )
+
+                                    if (!shift && !approvedLeave && !isToday) return null // Hide empty days unless it's today
 
                                     return (
                                         <div key={dateStr} style={{
@@ -199,7 +220,20 @@ export default async function PersonalSchedulePage({
                                             </div>
 
                                             <div style={{ flex: 1 }}>
-                                                {shift ? (
+                                                {approvedLeave ? (
+                                                    // LEAVE DISPLAY
+                                                    <div style={{
+                                                        backgroundColor: 'rgba(0,0,0,0.8)',
+                                                        color: 'white',
+                                                        padding: '0.5rem 1rem',
+                                                        borderRadius: '6px',
+                                                        display: 'inline-block'
+                                                    }}>
+                                                        <div style={{ fontWeight: 'bold', fontSize: '0.875rem' }}>LEAVE</div>
+                                                        <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>Approved</div>
+                                                    </div>
+                                                ) : shift ? (
+                                                    // SHIFT DISPLAY
                                                     <div>
                                                         <div style={{ fontWeight: '600', fontSize: '1.125rem', marginBottom: '0.25rem' }}>
                                                             {shift.start_time} - {shift.end_time}

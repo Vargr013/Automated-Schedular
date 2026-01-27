@@ -2,15 +2,18 @@
 
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
-import { format, parseISO, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, getDay, addDays } from 'date-fns'
+import { format, parseISO, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, getDay, addDays, subMonths, isWithinInterval } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
 import { isPublicHoliday } from '@/lib/holidays'
+import { getShifts } from '@/app/actions/shifts'
+import { getLeavesForRange } from '@/app/actions/scheduler'
 
 type User = {
     id: number
     name: string
     type: string // "FULL_TIME" or "PART_TIME"
     category?: string
+    role?: string
 }
 
 type Shift = {
@@ -32,7 +35,7 @@ type Shift = {
 
 export default function EnhancedExcelButton({
     users,
-    shifts,
+    shifts: initialShifts, // These are for the current month roster view
     currentMonth
 }: {
     users: User[]
@@ -41,13 +44,94 @@ export default function EnhancedExcelButton({
 }) {
     const handleExport = async () => {
         const workbook = new ExcelJS.Workbook()
+
+        // --- 1. PAYROLL SHEET ---
+        // Range: 22nd of Previous Month -> 21st of Current Month
+        const payrollSheet = workbook.addWorksheet('Payroll')
+
+        const currentMonthDate = parseISO(`${currentMonth}-01`)
+        const prevMonthDate = subMonths(currentMonthDate, 1)
+        const payrollStart = format(prevMonthDate, 'yyyy-MM-22')
+        const payrollEnd = format(currentMonthDate, 'yyyy-MM-21')
+
+        // Fetch Data for Payroll Range
+        // NOTE: We need data for this specific range, which might differ from "currentMonth" roster view
+        const payrollShifts = await getShifts(payrollStart, payrollEnd)
+        const payrollLeaves = await getLeavesForRange(payrollStart, payrollEnd)
+
+        // Setup Headers
+        payrollSheet.columns = [
+            { header: 'Name', key: 'name', width: 20 },
+            { header: 'Type', key: 'type', width: 15 },
+            { header: 'Category', key: 'category', width: 15 },
+            { header: 'Total Hours', key: 'hours', width: 15 }
+        ]
+
+        // Header Style
+        payrollSheet.getRow(1).font = { bold: true }
+
+        const payrollRangeDays = eachDayOfInterval({
+            start: parseISO(payrollStart),
+            end: parseISO(payrollEnd)
+        })
+
+        // Helper to calculate hours
+        const getHours = (start: string, end: string) => {
+            const [h1, m1] = start.split(':').map(Number)
+            const [h2, m2] = end.split(':').map(Number)
+            const diff = (h2 + m2 / 60) - (h1 + m1 / 60)
+            return diff > 0 ? diff : diff + 24
+        }
+
+        // Iterate Users
+        for (const user of users) {
+            let totalHours = 0
+
+            for (const day of payrollRangeDays) {
+                const dateStr = format(day, 'yyyy-MM-dd')
+
+                // Find Shift
+                const shift = payrollShifts.find(s => s.user_id === user.id && s.date === dateStr)
+
+                // Find Leave
+                const onLeave = payrollLeaves.some(l =>
+                    l.userId === user.id &&
+                    l.startDate <= dateStr && l.endDate >= dateStr
+                )
+
+                if (shift) {
+                    const hours = getHours(shift.start_time, shift.end_time)
+
+                    if (user.type !== 'FULL_TIME' && onLeave) {
+                        // PART_TIME on Leave = 0 hours (Calculated as unpaid/no-show for hours purposes)
+                        // logic based on "For full time staff, if they put in leave we still need that hours calculated. But for the part time team it is not required."
+                        totalHours += 0
+                    } else {
+                        // FULL_TIME on Leave = Count hours (Shift preserved in DB)
+                        // OR Normal Work
+                        totalHours += hours
+                    }
+                }
+            }
+
+            if (totalHours > 0 || user.type === 'FULL_TIME') {
+                payrollSheet.addRow({
+                    name: user.name,
+                    type: user.type,
+                    category: user.category,
+                    hours: totalHours.toFixed(2)
+                })
+            }
+        }
+
+
+        // --- 2. ROSTER SHEET (Existing Logic with updates) ---
         const worksheet = workbook.addWorksheet('Roster')
 
         const monthDate = parseISO(`${currentMonth}-01`)
         const { start, end } = getMonthRosterRange(currentMonth)
 
         // Get all weeks covering the month
-        // Start from the beginning of the week of the 1st
         let currentWeekStart = start // Monday
         const weeks = []
 
@@ -88,6 +172,13 @@ export default function EnhancedExcelButton({
             bottom: { style: 'thin' },
             right: { style: 'thin' }
         }
+
+        // Re-fetch leaves for Roster Range display
+        // We can reuse getLeavesForRange but we need to await it or fetch it early.
+        // Since we are inside an async function, we can await.
+        const rosterStartStr = format(start, 'yyyy-MM-dd')
+        const rosterEndStr = format(end, 'yyyy-MM-dd')
+        const rosterLeaves = await getLeavesForRange(rosterStartStr, rosterEndStr)
 
         for (const weekDays of weeks) {
             // --- Header Rows ---
@@ -139,7 +230,7 @@ export default function EnhancedExcelButton({
 
             weekDays.forEach((day, index) => {
                 const dateStr = format(day, 'yyyy-MM-dd')
-                const modShifts = shifts.filter(s => s.date === dateStr && s.department.name === 'Management (MOD)')
+                const modShifts = initialShifts.filter(s => s.date === dateStr && s.department.name === 'Management (MOD)')
                 const cell = modRow.getCell(index + 2)
 
                 if (modShifts.length > 0) {
@@ -161,7 +252,7 @@ export default function EnhancedExcelButton({
 
             weekDays.forEach((day, index) => {
                 const dateStr = format(day, 'yyyy-MM-dd')
-                const smodShifts = shifts.filter(s => s.date === dateStr && (s.department.name === 'Shift Manager (SMOD)' || s.is_smod))
+                const smodShifts = initialShifts.filter(s => s.date === dateStr && (s.department.name === 'Shift Manager (SMOD)' || s.is_smod))
                 const cell = smodRow.getCell(index + 2)
 
                 if (smodShifts.length > 0) {
@@ -216,11 +307,25 @@ export default function EnhancedExcelButton({
 
                     weekDays.forEach((day, index) => {
                         const dateStr = format(day, 'yyyy-MM-dd')
-                        const shift = shifts.find(s => s.user_id === user.id && s.date === dateStr)
+                        const shift = initialShifts.find(s => s.user_id === user.id && s.date === dateStr)
+                        const onLeave = rosterLeaves.some(l => l.userId === user.id && l.startDate <= dateStr && l.endDate >= dateStr)
+
                         const cell = row.getCell(index + 2)
                         cell.border = borderStyle
 
-                        if (shift) {
+                        if (onLeave) {
+                            // Check request: "add a black colour to approved leave days on the time sheet excel export"
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } } // Black
+                            // Keep text if shift exists? Yes, shift data is requested to be used.
+                            if (shift) {
+                                cell.value = `${shift.start_time} - ${shift.end_time}`
+                                cell.font = { color: { argb: 'FFFFFFFF' } } // White text
+                            } else {
+                                cell.value = 'LEAVE'
+                                cell.font = { color: { argb: 'FFFFFFFF' } }
+                            }
+                            cell.alignment = { horizontal: 'center' }
+                        } else if (shift) {
                             cell.value = `${shift.start_time} - ${shift.end_time}`
                             cell.alignment = { horizontal: 'center', wrapText: true }
                             // Apply department color
@@ -280,11 +385,23 @@ export default function EnhancedExcelButton({
 
                     weekDays.forEach((day, index) => {
                         const dateStr = format(day, 'yyyy-MM-dd')
-                        const shift = shifts.find(s => s.user_id === user.id && s.date === dateStr)
+                        const shift = initialShifts.find(s => s.user_id === user.id && s.date === dateStr)
+                        const onLeave = rosterLeaves.some(l => l.userId === user.id && l.startDate <= dateStr && l.endDate >= dateStr)
+
                         const cell = row.getCell(index + 2)
                         cell.border = borderStyle
 
-                        if (shift) {
+                        if (onLeave) {
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } } // Black
+                            if (shift) {
+                                cell.value = `${shift.start_time} - ${shift.end_time}` // Show shift but blacked out
+                                cell.font = { color: { argb: 'FFFFFFFF' } }
+                            } else {
+                                cell.value = 'LEAVE'
+                                cell.font = { color: { argb: 'FFFFFFFF' } }
+                            }
+                            cell.alignment = { horizontal: 'center' }
+                        } else if (shift) {
                             cell.value = `${shift.start_time} - ${shift.end_time}`
                             cell.alignment = { horizontal: 'center', wrapText: true }
                             // Apply department color
