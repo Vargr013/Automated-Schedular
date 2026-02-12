@@ -33,14 +33,48 @@ export async function updateLeaveStatus(leaveId: number, status: 'APPROVED' | 'D
     })
 
     revalidatePath('/admin/leave')
-    // We might need to revalidate the user's schedule page too, but we'd need to fetch the request first to know the userId. 
-    // For now, admin side is most critical.
 }
 
-export async function getLeaveRequests(status?: string, leaveType?: string) {
+export async function updateLeaveDetails(
+    leaveId: number,
+    data: { startDate: string; endDate: string; reason: string; leaveType: string }
+) {
+    await prisma.leave.update({
+        where: { id: leaveId },
+        data: {
+            startDate: data.startDate,
+            endDate: data.endDate,
+            reason: data.reason,
+            leaveType: data.leaveType as any
+        }
+    })
+
+    revalidatePath('/admin/leave')
+}
+
+export async function getLeaveRequests(status?: string, leaveType?: string, month?: string) {
     const where: Prisma.LeaveWhereInput = {}
     if (status) where.status = status as any // Enum cast might be needed depending on schema
     if (leaveType) where.leaveType = leaveType as any
+
+    if (month) {
+        const startOfMonth = `${month}-01`
+        // Simple trick for end of month in string comparison: YYYY-MM-32 covers all days
+        // actually just YYYY-MM-31 is enough for standard comparison, 
+        // but lets use last day of month logic or just simple string compare.
+        // If month is "2024-02", start is "2024-02-01". 
+        // Overlap: A.Start <= B.End && A.End >= B.Start
+        // Leave.StartDate <= MonthEnd && Leave.EndDate >= MonthStart
+
+        // We can't easily calculate MonthEnd string without date libs in strict SQL/Prisma without native Date objects if they are strings.
+        // But since they are strings YYYY-MM-DD:
+        // We can just approximate MonthEnd as `${month}-31`. It works for string comparison (2024-02-28 < 2024-02-31).
+
+        where.AND = [
+            { startDate: { lte: `${month}-31` } },
+            { endDate: { gte: `${month}-01` } }
+        ]
+    }
 
     return await prisma.leave.findMany({
         where,

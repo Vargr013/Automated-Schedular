@@ -1,20 +1,17 @@
 'use server'
 
-import { getLeaveRequests, updateLeaveStatus } from '@/app/actions/leave'
+import { getLeaveRequests } from '@/app/actions/leave'
 import { format, parseISO } from 'date-fns'
-import { Check, X } from 'lucide-react'
+import Link from 'next/link'
+import LeaveRowActions from './LeaveRowActions'
 
-// Allow client components to pass actions
-async function handleAction(leaveId: number, status: 'APPROVED' | 'DECLINED') {
-    'use server'
-    await updateLeaveStatus(leaveId, status)
-}
-
-export default async function LeavePage({ searchParams }: { searchParams: Promise<{ tab?: string, type?: string }> }) {
-    const { tab, type } = await searchParams
+export default async function LeavePage({ searchParams }: { searchParams: Promise<{ tab?: string, type?: string, month?: string }> }) {
+    const { tab, type, month } = await searchParams
     const currentTab = tab || 'PENDING'
     const currentType = type || ''
-    const requests = await getLeaveRequests(currentTab, currentType)
+    const currentMonth = month || ''
+
+    const requests = await getLeaveRequests(currentTab, currentType, currentMonth)
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -36,9 +33,9 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
                 marginBottom: '1rem'
             }}>
                 {['PENDING', 'APPROVED', 'DECLINED'].map(status => (
-                    <a
+                    <Link
                         key={status}
-                        href={`/admin/leave?tab=${status}${currentType ? `&type=${currentType}` : ''}`}
+                        href={`/admin/leave?tab=${status}${currentType ? `&type=${currentType}` : ''}${currentMonth ? `&month=${currentMonth}` : ''}`}
                         style={{
                             padding: '0.5rem 1rem',
                             borderBottom: currentTab === status ? '2px solid var(--primary)' : '2px solid transparent',
@@ -48,37 +45,68 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
                         }}
                     >
                         {status.charAt(0) + status.slice(1).toLowerCase()}
-                    </a>
+                    </Link>
                 ))}
             </div>
 
-            {/* Sub Filters (Type) */}
+            {/* Sub Filters (Type & Month) */}
             <div style={{
                 display: 'flex',
-                gap: '0.5rem',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 marginBottom: '1rem'
             }}>
-                {[
-                    { label: 'All Types', value: '' },
-                    { label: 'Paid', value: 'PAID' },
-                    { label: 'Unpaid', value: 'UNPAID' }
-                ].map(t => (
-                    <a
-                        key={t.value}
-                        href={`/admin/leave?tab=${currentTab}${t.value ? `&type=${t.value}` : ''}`}
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {[
+                        { label: 'All Types', value: '' },
+                        { label: 'Paid', value: 'PAID' },
+                        { label: 'Unpaid', value: 'UNPAID' }
+                    ].map(t => (
+                        <Link
+                            key={t.value}
+                            href={`/admin/leave?tab=${currentTab}${t.value ? `&type=${t.value}` : ''}${currentMonth ? `&month=${currentMonth}` : ''}`}
+                            style={{
+                                padding: '0.25rem 0.75rem',
+                                borderRadius: '1rem',
+                                fontSize: '0.875rem',
+                                textDecoration: 'none',
+                                backgroundColor: currentType === t.value ? 'var(--primary)' : 'var(--muted)',
+                                color: currentType === t.value ? 'white' : 'var(--foreground)',
+                                border: '1px solid var(--border)'
+                            }}
+                        >
+                            {t.label}
+                        </Link>
+                    ))}
+                </div>
+
+                <form style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    {/* Maintain other params */}
+                    <input type="hidden" name="tab" value={currentTab} />
+                    {currentType && <input type="hidden" name="type" value={currentType} />}
+
+                    <input
+                        type="month"
+                        name="month"
+                        defaultValue={currentMonth}
                         style={{
-                            padding: '0.25rem 0.75rem',
-                            borderRadius: '1rem',
-                            fontSize: '0.875rem',
-                            textDecoration: 'none',
-                            backgroundColor: currentType === t.value ? 'var(--primary)' : 'var(--muted)',
-                            color: currentType === t.value ? 'white' : 'var(--foreground)',
-                            border: '1px solid var(--border)'
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '0.375rem',
+                            border: '1px solid var(--border)',
+                            backgroundColor: 'var(--muted)',
+                            color: 'var(--foreground)'
                         }}
-                    >
-                        {t.label}
-                    </a>
-                ))}
+                        onChange={(e) => e.target.form?.requestSubmit()}
+                    />
+                    {currentMonth && (
+                        <Link
+                            href={`/admin/leave?tab=${currentTab}${currentType ? `&type=${currentType}` : ''}`}
+                            style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)', textDecoration: 'underline' }}
+                        >
+                            Clear
+                        </Link>
+                    )}
+                </form>
             </div>
 
             {/* List */}
@@ -97,7 +125,7 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
                         {requests.length === 0 ? (
                             <tr>
                                 <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted-foreground)' }}>
-                                    No {currentTab.toLowerCase()} requests found.
+                                    No {currentTab.toLowerCase()} requests found{currentMonth ? ` in ${currentMonth}` : ''}.
                                 </td>
                             </tr>
                         ) : (
@@ -124,31 +152,10 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
                                     </td>
                                     <td style={{ padding: '0.75rem' }}>{req.reason || '-'}</td>
                                     <td style={{ padding: '0.75rem', textAlign: 'right' }}>
-                                        {currentTab === 'PENDING' && (
-                                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                                                <form action={handleAction.bind(null, req.id, 'APPROVED')}>
-                                                    <button className="btn" style={{ padding: '0.5rem', backgroundColor: '#10b981' }}>
-                                                        <Check size={16} />
-                                                    </button>
-                                                </form>
-                                                <form action={handleAction.bind(null, req.id, 'DECLINED')}>
-                                                    <button className="btn" style={{ padding: '0.5rem', backgroundColor: '#ef4444' }}>
-                                                        <X size={16} />
-                                                    </button>
-                                                </form>
-                                            </div>
-                                        )}
-                                        {currentTab !== 'PENDING' && (
-                                            <span style={{
-                                                fontSize: '0.875rem',
-                                                padding: '0.25rem 0.5rem',
-                                                borderRadius: '4px',
-                                                background: req.status === 'APPROVED' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                                color: req.status === 'APPROVED' ? '#10b981' : '#ef4444'
-                                            }}>
-                                                {req.status}
-                                            </span>
-                                        )}
+                                        <LeaveRowActions
+                                            request={req}
+                                            isPending={currentTab === 'PENDING'}
+                                        />
                                     </td>
                                 </tr>
                             ))
