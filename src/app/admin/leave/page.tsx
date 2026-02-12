@@ -4,6 +4,7 @@ import { getLeaveRequests } from '@/app/actions/leave'
 import { format, parseISO } from 'date-fns'
 import Link from 'next/link'
 import LeaveRowActions from './LeaveRowActions'
+import MonthFilter from './MonthFilter'
 
 export default async function LeavePage({ searchParams }: { searchParams: Promise<{ tab?: string, type?: string, month?: string }> }) {
     const { tab, type, month } = await searchParams
