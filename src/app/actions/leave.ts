@@ -86,8 +86,14 @@ export async function getLeaveRequests(status?: string, leaveType?: string, mont
         }
     })
 
-    // Serialize to plain objects to avoid "Date object not supported" errors in Client Components
-    return JSON.parse(JSON.stringify(requests))
+    // Manual serialization is more efficient than JSON.parse(JSON.stringify)
+    // Dates are already strings in DB, so we just pass them through. 
+    // This removes the overhead and fixes the type error.
+    return requests.map(req => ({
+        ...req,
+        startDate: req.startDate,
+        endDate: req.endDate,
+    }))
 }
 
 export async function getUserLeaveRequests(userId: number) {
