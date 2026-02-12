@@ -76,7 +76,7 @@ export async function getLeaveRequests(status?: string, leaveType?: string, mont
         ]
     }
 
-    return await prisma.leave.findMany({
+    const requests = await prisma.leave.findMany({
         where,
         include: {
             user: true
@@ -85,6 +85,9 @@ export async function getLeaveRequests(status?: string, leaveType?: string, mont
             startDate: 'asc'
         }
     })
+
+    // Serialize to plain objects to avoid "Date object not supported" errors in Client Components
+    return JSON.parse(JSON.stringify(requests))
 }
 
 export async function getUserLeaveRequests(userId: number) {
