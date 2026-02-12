@@ -10,7 +10,7 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
     const { tab, type, month } = await searchParams
     const currentTab = tab || 'PENDING'
     const currentType = type || ''
-    const currentMonth = month || ''
+    const currentMonth = month || format(new Date(), 'yyyy-MM')
 
     const requests = await getLeaveRequests(currentTab, currentType, currentMonth)
 
