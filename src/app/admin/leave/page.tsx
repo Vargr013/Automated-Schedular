@@ -81,33 +81,11 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
                     ))}
                 </div>
 
-                <form style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    {/* Maintain other params */}
-                    <input type="hidden" name="tab" value={currentTab} />
-                    {currentType && <input type="hidden" name="type" value={currentType} />}
-
-                    <input
-                        type="month"
-                        name="month"
-                        defaultValue={currentMonth}
-                        style={{
-                            padding: '0.25rem 0.5rem',
-                            borderRadius: '0.375rem',
-                            border: '1px solid var(--border)',
-                            backgroundColor: 'var(--muted)',
-                            color: 'var(--foreground)'
-                        }}
-                        onChange={(e) => e.target.form?.requestSubmit()}
-                    />
-                    {currentMonth && (
-                        <Link
-                            href={`/admin/leave?tab=${currentTab}${currentType ? `&type=${currentType}` : ''}`}
-                            style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)', textDecoration: 'underline' }}
-                        >
-                            Clear
-                        </Link>
-                    )}
-                </form>
+                <MonthFilter
+                    currentMonth={currentMonth}
+                    currentTab={currentTab}
+                    currentType={currentType}
+                />
             </div>
 
             {/* List */}
