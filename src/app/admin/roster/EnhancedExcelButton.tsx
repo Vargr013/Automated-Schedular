@@ -1,12 +1,11 @@
 'use client'
 
-import ExcelJS from 'exceljs'
-import { saveAs } from 'file-saver'
-import { format, parseISO, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, getDay, addDays, subMonths, isWithinInterval } from 'date-fns'
+import { format, parseISO, eachDayOfInterval, endOfWeek, isSameMonth, addDays, subMonths } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
 import { isPublicHoliday, getMultiplier } from '@/lib/holidays'
 import { getShifts } from '@/app/actions/shifts'
 import { getLeavesForRange } from '@/app/actions/scheduler'
+import { useState } from 'react'
 
 type User = {
     id: number
@@ -42,25 +41,35 @@ export default function EnhancedExcelButton({
     shifts: Shift[]
     currentMonth: string
 }) {
+    const [isExporting, setIsExporting] = useState(false)
+
     const handleExport = async () => {
-        const workbook = new ExcelJS.Workbook()
+        setIsExporting(true)
+
+        try {
+            const [{ default: ExcelJS }, { saveAs }] = await Promise.all([
+                import('exceljs'),
+                import('file-saver')
+            ])
+
+            const workbook = new ExcelJS.Workbook()
 
         // --- 1. PAYROLL SHEET ---
         // Range: 22nd of Previous Month -> 21st of Current Month
         const payrollSheet = workbook.addWorksheet('Payroll')
 
-        const currentMonthDate = parseISO(`${currentMonth}-01`)
-        const prevMonthDate = subMonths(currentMonthDate, 1)
-        const payrollStart = format(prevMonthDate, 'yyyy-MM-22')
-        const payrollEnd = format(currentMonthDate, 'yyyy-MM-21')
+            const currentMonthDate = parseISO(`${currentMonth}-01`)
+            const prevMonthDate = subMonths(currentMonthDate, 1)
+            const payrollStart = format(prevMonthDate, 'yyyy-MM-22')
+            const payrollEnd = format(currentMonthDate, 'yyyy-MM-21')
 
         // Fetch Data for Payroll Range
         // NOTE: We need data for this specific range, which might differ from "currentMonth" roster view
-        const payrollShifts = await getShifts(payrollStart, payrollEnd)
-        const payrollLeaves = await getLeavesForRange(payrollStart, payrollEnd)
+            const payrollShifts = await getShifts(payrollStart, payrollEnd)
+            const payrollLeaves = await getLeavesForRange(payrollStart, payrollEnd)
 
         // Setup Headers
-        payrollSheet.columns = [
+            payrollSheet.columns = [
             { header: 'Name', key: 'name', width: 20 },
             { header: 'Type', key: 'type', width: 15 },
             { header: 'Category', key: 'category', width: 15 },
@@ -68,15 +77,15 @@ export default function EnhancedExcelButton({
         ]
 
         // Header Style
-        payrollSheet.getRow(1).font = { bold: true }
+            payrollSheet.getRow(1).font = { bold: true }
 
-        const payrollRangeDays = eachDayOfInterval({
-            start: parseISO(payrollStart),
-            end: parseISO(payrollEnd)
-        })
+            const payrollRangeDays = eachDayOfInterval({
+                start: parseISO(payrollStart),
+                end: parseISO(payrollEnd)
+            })
 
         // Helper to calculate hours
-        const getHours = (start: string, end: string) => {
+            const getHours = (start: string, end: string) => {
             const [h1, m1] = start.split(':').map(Number)
             const [h2, m2] = end.split(':').map(Number)
             const diff = (h2 + m2 / 60) - (h1 + m1 / 60)
@@ -84,7 +93,7 @@ export default function EnhancedExcelButton({
         }
 
         // Iterate Users
-        for (const user of users) {
+            for (const user of users) {
             let totalHours = 0
 
             for (const day of payrollRangeDays) {
@@ -134,61 +143,61 @@ export default function EnhancedExcelButton({
 
 
         // --- 2. ROSTER SHEET (Existing Logic with updates) ---
-        const worksheet = workbook.addWorksheet('Roster')
+            const worksheet = workbook.addWorksheet('Roster')
 
-        const monthDate = parseISO(`${currentMonth}-01`)
-        const { start, end } = getMonthRosterRange(currentMonth)
+            const monthDate = parseISO(`${currentMonth}-01`)
+            const { start, end } = getMonthRosterRange(currentMonth)
 
         // Get all weeks covering the month
-        let currentWeekStart = start // Monday
-        const weeks = []
+            let currentWeekStart = start // Monday
+            const weeks = []
 
-        while (currentWeekStart < end) {
+            while (currentWeekStart < end) {
             const currentWeekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 })
             const daysInWeek = eachDayOfInterval({ start: currentWeekStart, end: currentWeekEnd })
             weeks.push(daysInWeek)
             currentWeekStart = addDays(currentWeekStart, 7)
         }
 
-        let currentRow = 1
+            let currentRow = 1
 
         // --- FULL HEADER ---
-        worksheet.mergeCells(currentRow, 1, currentRow, 8)
-        const titleCell = worksheet.getCell(currentRow, 1)
-        titleCell.value = 'CityROCK Johannesburg'
+            worksheet.mergeCells(currentRow, 1, currentRow, 8)
+            const titleCell = worksheet.getCell(currentRow, 1)
+            titleCell.value = 'CityROCK Johannesburg'
         titleCell.font = { size: 16, bold: true }
         titleCell.alignment = { horizontal: 'left' }
-        currentRow++
+            currentRow++
 
-        worksheet.mergeCells(currentRow, 1, currentRow, 8)
-        const subTitleCell = worksheet.getCell(currentRow, 1)
-        subTitleCell.value = `Staff Schedule: ${format(monthDate, 'MMMM yyyy')}`
+            worksheet.mergeCells(currentRow, 1, currentRow, 8)
+            const subTitleCell = worksheet.getCell(currentRow, 1)
+            subTitleCell.value = `Staff Schedule: ${format(monthDate, 'MMMM yyyy')}`
         subTitleCell.font = { size: 12, bold: true }
         subTitleCell.alignment = { horizontal: 'left' }
-        currentRow++
-        currentRow++ // Spacer
+            currentRow++
+            currentRow++ // Spacer
 
         // Helper to convert Hex to ARGB for ExcelJS
-        const getArgb = (hex: string) => {
-            return 'FF' + hex.replace('#', '').toUpperCase()
-        }
+            const getArgb = (hex: string) => {
+                return 'FF' + hex.replace('#', '').toUpperCase()
+            }
 
         // Define Border Style
-        const borderStyle: Partial<ExcelJS.Borders> = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' }
-        }
+            const borderStyle = {
+                top: { style: 'thin' },
+                left: { style: 'thin' },
+                bottom: { style: 'thin' },
+                right: { style: 'thin' }
+            }
 
         // Re-fetch leaves for Roster Range display
         // We can reuse getLeavesForRange but we need to await it or fetch it early.
         // Since we are inside an async function, we can await.
-        const rosterStartStr = format(start, 'yyyy-MM-dd')
-        const rosterEndStr = format(end, 'yyyy-MM-dd')
-        const rosterLeaves = await getLeavesForRange(rosterStartStr, rosterEndStr)
+            const rosterStartStr = format(start, 'yyyy-MM-dd')
+            const rosterEndStr = format(end, 'yyyy-MM-dd')
+            const rosterLeaves = await getLeavesForRange(rosterStartStr, rosterEndStr)
 
-        for (const weekDays of weeks) {
+            for (const weekDays of weeks) {
             // --- Header Rows ---
 
             // 1. Date Row (e.g., "8-Dec", "9-Dec")
@@ -432,24 +441,28 @@ export default function EnhancedExcelButton({
         }
 
         // Adjust column widths
-        worksheet.getColumn(1).width = 20
-        for (let i = 2; i <= 8; i++) {
-            worksheet.getColumn(i).width = 15
-        }
+            worksheet.getColumn(1).width = 20
+            for (let i = 2; i <= 8; i++) {
+                worksheet.getColumn(i).width = 15
+            }
 
         // Generate buffer
-        const buffer = await workbook.xlsx.writeBuffer()
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-        saveAs(blob, `Roster_${currentMonth}_Enhanced.xlsx`)
+            const buffer = await workbook.xlsx.writeBuffer()
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+            saveAs(blob, `Roster_${currentMonth}_Enhanced.xlsx`)
+        } finally {
+            setIsExporting(false)
+        }
     }
 
     return (
         <button
             onClick={handleExport}
             className="btn btn-secondary"
+            disabled={isExporting}
             style={{ marginLeft: '10px', backgroundColor: '#107c41', color: 'white' }} // Excel Green
         >
-            Export Excel (Enhanced)
+            {isExporting ? 'Exporting Excel...' : 'Export Excel (Enhanced)'}
         </button>
     )
 }

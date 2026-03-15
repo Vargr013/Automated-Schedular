@@ -1,10 +1,15 @@
 'use server'
 
 import prisma from '@/lib/prisma'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { startOfMonth, endOfMonth, eachDayOfInterval, getDay, format, parseISO, subDays } from 'date-fns'
 import { validateRoster } from '@/lib/validation/engine'
 import { getLeavesForMonth } from './scheduler'
+import { getValidationMonthTag } from './constraints'
+
+function getMonthFromDate(date: string) {
+    return date.slice(0, 7)
+}
 
 export async function getShifts(startDate: string, endDate: string) {
     // Dates should be in YYYY-MM-DD format
@@ -48,7 +53,7 @@ export async function createShift(formData: FormData) {
     const end_time = formData.get('end_time') as string
     const is_smod = formData.get('is_smod') === 'on'
 
-    await prisma.shift.create({
+    const shift = await prisma.shift.create({
         data: {
             user_id,
             department_id,
@@ -60,17 +65,32 @@ export async function createShift(formData: FormData) {
     })
 
     revalidatePath('/admin/roster')
+    revalidateTag(getValidationMonthTag(getMonthFromDate(date)))
+    return shift
 }
 
 export async function deleteShift(id: number) {
+    const existingShift = await prisma.shift.findUnique({
+        where: { id },
+        select: { date: true }
+    })
+
     await prisma.shift.delete({
         where: { id }
     })
 
     revalidatePath('/admin/roster')
+    if (existingShift) {
+        revalidateTag(getValidationMonthTag(getMonthFromDate(existingShift.date)))
+    }
 }
 
 export async function moveShift(shiftId: number, newUserId: number, newDate: string) {
+    const existingShift = await prisma.shift.findUnique({
+        where: { id: shiftId },
+        select: { date: true }
+    })
+
     await prisma.shift.update({
         where: { id: shiftId },
         data: {
@@ -79,6 +99,10 @@ export async function moveShift(shiftId: number, newUserId: number, newDate: str
         }
     })
     revalidatePath('/admin/roster')
+    if (existingShift) {
+        revalidateTag(getValidationMonthTag(getMonthFromDate(existingShift.date)))
+    }
+    revalidateTag(getValidationMonthTag(getMonthFromDate(newDate)))
 }
 
 export async function updateShift(formData: FormData) {
@@ -103,6 +127,7 @@ export async function updateShift(formData: FormData) {
     })
 
     revalidatePath('/admin/roster')
+    revalidateTag(getValidationMonthTag(getMonthFromDate(date)))
 }
 
 export async function generateSchedule(month: string) {
@@ -138,7 +163,7 @@ export async function generateSchedule(month: string) {
     })
 
     // Mutable list of shifts to track state during generation
-    let currentShifts = existingShiftsDB.map(s => ({
+    const currentShifts = existingShiftsDB.map(s => ({
         id: s.id,
         user_id: s.user_id,
         department_id: s.department_id,
@@ -214,7 +239,7 @@ export async function generateSchedule(month: string) {
                 // If any violation involves our candidate shift, skip it
                 // Note: The candidate has ID -1. 
                 // Violations usually return shiftId.
-                const isViolation = violations.some((v: any) => v.shiftId === -1)
+                const isViolation = violations.some((violation) => violation.shiftId === -1)
 
                 if (!isViolation) {
                     // Create in DB
@@ -245,5 +270,6 @@ export async function generateSchedule(month: string) {
     }
 
     revalidatePath('/admin/roster')
+    revalidateTag(getValidationMonthTag(month))
     return { success: true, count: createdCount }
 }

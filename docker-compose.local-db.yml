@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: scheduler-local-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: scheduler_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "54329:5432"
+    volumes:
+      - scheduler_local_postgres:/var/lib/postgresql/data
+
+volumes:
+  scheduler_local_postgres:

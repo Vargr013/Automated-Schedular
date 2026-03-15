@@ -1,7 +1,7 @@
 import { getUsers } from '@/app/actions/users'
 import { getDepartments } from '@/app/actions/departments'
 import { getShifts } from '@/app/actions/shifts'
-import { getOperatingDays } from '@/app/actions/calendar'
+import { getOperatingDaysForRange } from '@/app/actions/calendar'
 import { validateMonth } from '@/app/actions/constraints'
 import { getLeavesForMonth } from '@/app/actions/scheduler'
 import RosterGrid from './RosterGrid'
@@ -33,26 +33,71 @@ export default async function RosterPage({
         getUsers(),
         getDepartments(),
         getShifts(startDate, endDate),
-        getOperatingDays(),
+        getOperatingDaysForRange(startDate, endDate),
         validateMonth(currentMonth),
         getLeavesForMonth(currentMonth)
     ])
 
+    const approvedLeaves = leaves.filter((leave) => leave.status === 'APPROVED')
+    const openDays = operatingDays.filter((day) => day.status === 'OPEN').length
+    const closedDays = operatingDays.filter((day) => day.status === 'CLOSED').length
+    const holidayDays = operatingDays.filter((day) => day.status === 'HOLIDAY').length
+
     return (
         <div style={{ height: 'calc(100vh - 40px)', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <h1 style={{ margin: 0 }}>Roster</h1>
-                    <MonthSelector currentMonth={currentMonth} />
+            <div style={{ marginBottom: '20px' }}>
+                <div className="roster-toolbar" style={{ marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                        <div>
+                            <h1 style={{ margin: 0 }}>Roster</h1>
+                            <p style={{ margin: '0.35rem 0 0', color: 'var(--muted-foreground)', fontSize: '0.9rem' }}>
+                                Build the month, spot issues quickly, then publish.
+                            </p>
+                        </div>
+                        <MonthSelector currentMonth={currentMonth} />
+                    </div>
+                    <div className="roster-action-group">
+                        <PublishButton currentMonth={currentMonth} />
+                        <GenerateButton currentMonth={currentMonth} />
+                        <AutoSchedulerModal currentMonth={currentMonth} />
+                    </div>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <PublishButton currentMonth={currentMonth} />
-                    <GenerateButton currentMonth={currentMonth} />
-                    <AutoSchedulerModal currentMonth={currentMonth} />
-                    <ClearScheduleButton currentMonth={currentMonth} />
-                    <EnhancedPdfButton users={users} shifts={shifts} currentMonth={currentMonth} />
-                    <EnhancedExcelButton users={users} shifts={shifts} currentMonth={currentMonth} />
-                    <RosterImportButton currentMonth={currentMonth} />
+
+                <div className="roster-summary-grid">
+                    <div className="roster-summary-card">
+                        <div className="roster-summary-label">Shift Coverage</div>
+                        <div className="roster-summary-value">{shifts.length}</div>
+                        <div className="roster-summary-note">Scheduled shifts in the visible roster window.</div>
+                    </div>
+                    <div className="roster-summary-card">
+                        <div className="roster-summary-label">Staff In Roster</div>
+                        <div className="roster-summary-value">{users.length}</div>
+                        <div className="roster-summary-note">People available to schedule this month.</div>
+                    </div>
+                    <div className="roster-summary-card">
+                        <div className="roster-summary-label">Approved Leave</div>
+                        <div className="roster-summary-value">{approvedLeaves.length}</div>
+                        <div className="roster-summary-note">Leave requests already affecting availability.</div>
+                    </div>
+                    <div className="roster-summary-card">
+                        <div className="roster-summary-label">Warnings</div>
+                        <div className="roster-summary-value">{violations.length}</div>
+                        <div className="roster-summary-note">Rule warnings currently visible on the roster.</div>
+                    </div>
+                </div>
+
+                <div className="roster-toolbar">
+                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>
+                        <span>{openDays} open days</span>
+                        <span>{closedDays} closed days</span>
+                        <span>{holidayDays} holidays</span>
+                    </div>
+                    <div className="roster-action-group">
+                        <ClearScheduleButton currentMonth={currentMonth} />
+                        <EnhancedPdfButton users={users} shifts={shifts} currentMonth={currentMonth} />
+                        <EnhancedExcelButton users={users} shifts={shifts} currentMonth={currentMonth} />
+                        <RosterImportButton currentMonth={currentMonth} />
+                    </div>
                 </div>
             </div>
 
@@ -61,7 +106,6 @@ export default async function RosterPage({
                 departments={departments}
                 shifts={shifts}
                 operatingDays={operatingDays}
-                currentMonth={currentMonth}
                 violations={violations}
                 leaves={leaves}
                 startDate={startDate}

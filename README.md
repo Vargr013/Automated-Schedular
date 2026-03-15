@@ -71,3 +71,51 @@ This application helps organizations manage staff rosters, leave requests, shift
 - npm run build: Builds the application for production.
 - npm run start: Starts the production server.
 - npm run lint: Runs the linter to check for code issues.
+
+## Local Dev Database
+
+This repo can run against a dedicated local Postgres clone instead of the hosted database.
+
+### What it does
+
+- Starts a local Postgres container on port `54329`
+- Clones the current remote database into a local database called `scheduler_dev`
+- Optionally rewrites `.env.local` so the app uses the local clone
+- Syncs both `.env.local` and `.env` when you use `-WriteLocalEnv`, so Prisma CLI and Next.js point at the same local database
+
+### Files
+
+- `docker-compose.local-db.yml`: local Postgres container config
+- `scripts/clone-remote-to-local-db.ps1`: remote-to-local clone script
+- `env.localdb.example`: example local database env values
+
+### Prerequisites
+
+- Docker Desktop installed and running
+- Remote database env vars available in `.env.local` or your shell
+
+### Clone the hosted DB into a local dev DB
+
+From the repo root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\clone-remote-to-local-db.ps1 -WriteLocalEnv
+```
+
+If you do not want the script to edit `.env.local`, omit `-WriteLocalEnv` and copy the values from `env.localdb.example` manually.
+
+### Start the app against the local clone
+
+```powershell
+npx prisma generate
+npm run dev
+```
+
+### Useful Docker commands
+
+```powershell
+docker start scheduler-local-db
+docker stop scheduler-local-db
+docker rm -f scheduler-local-db
+docker volume rm scheduler-app_scheduler_local_postgres
+```

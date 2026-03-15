@@ -1,11 +1,17 @@
 'use server'
 
 import prisma from '@/lib/prisma'
-import { startOfMonth, endOfMonth, subDays, addDays, format, parseISO } from 'date-fns'
+import { subDays, format, parseISO } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
 import { validateRoster } from '@/lib/validation/engine'
-import { ConstraintConfig, Violation, ShiftData } from '@/lib/validation/types'
-import { revalidatePath } from 'next/cache'
+import { ConstraintConfig, ShiftData } from '@/lib/validation/types'
+import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache'
+
+const VALIDATION_RULES_TAG = 'validation-rules'
+
+export function getValidationMonthTag(month: string) {
+    return `validation-month-${month}`
+}
 
 export async function getConstraints() {
     return await prisma.constraint.findMany({
@@ -28,6 +34,7 @@ export async function createConstraint(data: {
     })
     revalidatePath('/admin/constraints')
     revalidatePath('/admin/roster')
+    revalidateTag(VALIDATION_RULES_TAG)
 }
 
 export async function updateConstraint(data: {
@@ -50,15 +57,17 @@ export async function updateConstraint(data: {
     })
     revalidatePath('/admin/constraints')
     revalidatePath('/admin/roster')
+    revalidateTag(VALIDATION_RULES_TAG)
 }
 
 export async function deleteConstraint(id: number) {
     await prisma.constraint.delete({ where: { id } })
     revalidatePath('/admin/constraints')
     revalidatePath('/admin/roster')
+    revalidateTag(VALIDATION_RULES_TAG)
 }
 
-export async function validateMonth(month: string) {
+async function computeMonthValidation(month: string) {
     // 1. Fetch Constraints
     // 1. No longer fetching from DB, using hardcoded rule below
     // const constraints = await prisma.constraint.findMany({ where: { isActive: true } })
@@ -66,7 +75,7 @@ export async function validateMonth(month: string) {
 
     // 2. Fetch Shifts for month PLUS buffer (e.g. prev 14 days to handle rolling windows)
     // 2. Fetch Shifts for month PLUS buffer (e.g. prev 14 days to handle rolling windows)
-    const { startDate, endDate, start } = getMonthRosterRange(month)
+    const { endDate, start } = getMonthRosterRange(month)
 
     // We already start from previous Monday if needed, but for rolling window constraints (e.g. 7 days),
     // we might need a huge buffer or just rely on the new extended start.
@@ -107,7 +116,18 @@ export async function validateMonth(month: string) {
         department_id: null
     }]
 
-    const violations = validateRoster(shiftData, configList, month)
+    return validateRoster(shiftData, configList, month)
+}
 
-    return violations
+export async function validateMonth(month: string) {
+    const runValidation = unstable_cache(
+        async () => computeMonthValidation(month),
+        [getValidationMonthTag(month)],
+        {
+            tags: [getValidationMonthTag(month), VALIDATION_RULES_TAG],
+            revalidate: 30
+        }
+    )
+
+    return runValidation()
 }

@@ -1,11 +1,10 @@
 'use client'
 
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
-import { format, parseISO, eachDayOfInterval, startOfWeek, endOfWeek, addDays, isSameMonth } from 'date-fns'
+import { format, parseISO, eachDayOfInterval, endOfWeek, addDays, isSameMonth } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
 import { isPublicHoliday } from '@/lib/holidays'
 import { getLeavesForRange } from '@/app/actions/scheduler'
+import { useState } from 'react'
 
 type User = {
     id: number
@@ -31,6 +30,12 @@ type Shift = {
     }
 }
 
+type LeaveRangeItem = {
+    userId: number
+    startDate: string
+    endDate: string
+}
+
 export default function EnhancedPdfButton({
     users,
     shifts,
@@ -40,40 +45,50 @@ export default function EnhancedPdfButton({
     shifts: Shift[]
     currentMonth: string
 }) {
-    const handleExport = async () => {
-        const doc = new jsPDF('l', 'mm', 'a4') // Landscape
+    const [isExporting, setIsExporting] = useState(false)
 
-        const monthDate = parseISO(`${currentMonth}-01`)
-        const { start, end } = getMonthRosterRange(currentMonth)
+    const handleExport = async () => {
+        setIsExporting(true)
+
+        try {
+            const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+                import('jspdf'),
+                import('jspdf-autotable')
+            ])
+
+            const doc = new jsPDF('l', 'mm', 'a4') // Landscape
+
+            const monthDate = parseISO(`${currentMonth}-01`)
+            const { start, end } = getMonthRosterRange(currentMonth)
 
         // Fetch leaves
         const startStr = format(start, 'yyyy-MM-dd')
         const endStr = format(end, 'yyyy-MM-dd')
-        const leaves = await getLeavesForRange(startStr, endStr)
+            const leaves = await getLeavesForRange(startStr, endStr)
 
         // Get all weeks
-        let currentWeekStart = start
-        const weeks = []
+            let currentWeekStart = start
+            const weeks = []
 
-        while (currentWeekStart < end) {
-            const currentWeekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 })
-            const daysInWeek = eachDayOfInterval({ start: currentWeekStart, end: currentWeekEnd })
-            weeks.push(daysInWeek)
-            currentWeekStart = addDays(currentWeekStart, 7)
-        }
+            while (currentWeekStart < end) {
+                const currentWeekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 })
+                const daysInWeek = eachDayOfInterval({ start: currentWeekStart, end: currentWeekEnd })
+                weeks.push(daysInWeek)
+                currentWeekStart = addDays(currentWeekStart, 7)
+            }
 
-        let finalY = 25 // Start Y position lower to make space for header
+            let finalY = 25 // Start Y position lower to make space for header
 
         // Full Header
-        doc.setFontSize(18)
-        doc.setTextColor(0, 0, 0)
-        doc.text('CityROCK Johannesburg', 14, 12)
-        doc.setFontSize(12)
-        doc.text(`Staff Schedule: ${format(monthDate, 'MMMM yyyy')}`, 14, 18)
-        doc.setLineWidth(0.5)
-        doc.line(14, 20, 283, 20) // Header separator
+            doc.setFontSize(18)
+            doc.setTextColor(0, 0, 0)
+            doc.text('CityROCK Johannesburg', 14, 12)
+            doc.setFontSize(12)
+            doc.text(`Staff Schedule: ${format(monthDate, 'MMMM yyyy')}`, 14, 18)
+            doc.setLineWidth(0.5)
+            doc.line(14, 20, 283, 20) // Header separator
 
-        weeks.forEach((weekDays, weekIndex) => {
+            weeks.forEach((weekDays) => {
             // Check if we need a new page
             if (finalY > 180) {
                 doc.addPage()
@@ -181,16 +196,6 @@ export default function EnhancedPdfButton({
                 })
             })
 
-            // Fetch leaves for the range
-            const startStr = format(start, 'yyyy-MM-dd')
-            const endStr = format(end, 'yyyy-MM-dd')
-            // Note: Since handleExport is sync/async, we need to handle the promise.
-            // But jsPDF generation is synchronous usually.
-            // We need to make handleExport async to fetch data.
-            // Then wait for it.
-
-            // Refactor handleExport to async
-
             autoTable(doc, {
                 startY: finalY,
                 head: [dateRow, dayNameRow],
@@ -293,7 +298,7 @@ export default function EnhancedPdfButton({
                                 const user = users.find(u => u.name === userName)
 
                                 if (user) {
-                                    const onLeave = leaves.some((l: any) => l.userId === user.id && l.startDate <= dateStr && l.endDate >= dateStr)
+                                    const onLeave = (leaves as LeaveRangeItem[]).some((leave) => leave.userId === user.id && leave.startDate <= dateStr && leave.endDate >= dateStr)
                                     const shift = shifts.find(s => s.user_id === user.id && s.date === dateStr)
 
                                     if (onLeave) {
@@ -319,19 +324,25 @@ export default function EnhancedPdfButton({
                 }
             })
 
-            finalY = (doc as any).lastAutoTable.finalY + 10
-        })
+            finalY = (doc as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY
+                ? ((doc as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? finalY) + 10
+                : finalY + 10
+            })
 
-        doc.save(`roster-${currentMonth}-enhanced.pdf`)
+            doc.save(`roster-${currentMonth}-enhanced.pdf`)
+        } finally {
+            setIsExporting(false)
+        }
     }
 
     return (
         <button
             onClick={handleExport}
             className="btn btn-secondary"
+            disabled={isExporting}
             style={{ marginLeft: '10px', backgroundColor: '#b30b00', color: 'white' }} // PDF Red
         >
-            Export PDF (Enhanced)
+            {isExporting ? 'Exporting PDF...' : 'Export PDF (Enhanced)'}
         </button>
     )
 }

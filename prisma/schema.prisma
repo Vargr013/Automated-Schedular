@@ -40,6 +40,9 @@ model Leave {
   status    String  @default("PENDING")
   leaveType String  @default("UNPAID")
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startDate, endDate])
+  @@index([startDate, endDate])
 }
 
 model Department {
@@ -64,6 +67,9 @@ model AutomationRule {
   is_smod       Boolean    @default(false)
   tolerance     Int        @default(0) // Minutes
   department    Department @relation(fields: [department_id], references: [id])
+
+  @@index([day_of_week])
+  @@index([department_id, day_of_week])
 }
 
 model UserSkill {
@@ -82,6 +88,8 @@ model OperatingDay {
   open_time  String?
   close_time String?
   event_note String?
+
+  @@index([date])
 }
 
 model ShiftTemplate {
@@ -102,6 +110,9 @@ model UserBaseRule {
   recurrence_type String
   template        ShiftTemplate @relation(fields: [template_id], references: [id])
   user            User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, day_of_week])
+  @@index([template_id])
 }
 
 model Shift {
@@ -114,6 +125,10 @@ model Shift {
   is_smod       Boolean    @default(false)
   department    Department @relation(fields: [department_id], references: [id])
   user          User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([date])
+  @@index([user_id, date])
+  @@index([department_id, date])
 }
 
 model SchedulePublish {
