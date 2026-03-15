@@ -1,16 +1,20 @@
 'use server'
 
 import prisma from '@/lib/prisma'
-import { subDays, format, parseISO } from 'date-fns'
+import { eachDayOfInterval, format, getDay, parseISO } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
-import { validateRoster } from '@/lib/validation/engine'
-import { ConstraintConfig, ShiftData } from '@/lib/validation/types'
+import { getValidationMonthTag, VALIDATION_RULES_TAG } from '@/lib/validation/cache-tags'
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache'
 
-const VALIDATION_RULES_TAG = 'validation-rules'
-
-export function getValidationMonthTag(month: string) {
-    return `validation-month-${month}`
+export type RosterWarning = {
+    type: 'LEAVE_CONFLICT' | 'UNDERSTAFFED'
+    date: string
+    message: string
+    shiftId?: number
+    userId?: number
+    departmentId?: number
+    startTime?: string
+    endTime?: string
 }
 
 export async function getConstraints() {
@@ -32,9 +36,9 @@ export async function createConstraint(data: {
             department_id: data.department_id || null
         }
     })
-    revalidatePath('/admin/constraints')
-    revalidatePath('/admin/roster')
-    revalidateTag(VALIDATION_RULES_TAG)
+    revalidatePath('/admin/constraints', 'page')
+    revalidatePath('/admin/roster', 'page')
+    revalidateTag(VALIDATION_RULES_TAG, 'max')
 }
 
 export async function updateConstraint(data: {
@@ -55,68 +59,143 @@ export async function updateConstraint(data: {
             department_id: data.department_id || null
         }
     })
-    revalidatePath('/admin/constraints')
-    revalidatePath('/admin/roster')
-    revalidateTag(VALIDATION_RULES_TAG)
+    revalidatePath('/admin/constraints', 'page')
+    revalidatePath('/admin/roster', 'page')
+    revalidateTag(VALIDATION_RULES_TAG, 'max')
 }
 
 export async function deleteConstraint(id: number) {
     await prisma.constraint.delete({ where: { id } })
-    revalidatePath('/admin/constraints')
-    revalidatePath('/admin/roster')
-    revalidateTag(VALIDATION_RULES_TAG)
+    revalidatePath('/admin/constraints', 'page')
+    revalidatePath('/admin/roster', 'page')
+    revalidateTag(VALIDATION_RULES_TAG, 'max')
 }
 
-async function computeMonthValidation(month: string) {
-    // 1. Fetch Constraints
-    // 1. No longer fetching from DB, using hardcoded rule below
-    // const constraints = await prisma.constraint.findMany({ where: { isActive: true } })
-    // if (constraints.length === 0) return []
+function getMinutes(time: string) {
+    const [hours, minutes] = time.split(':').map(Number)
+    return hours * 60 + minutes
+}
 
-    // 2. Fetch Shifts for month PLUS buffer (e.g. prev 14 days to handle rolling windows)
-    // 2. Fetch Shifts for month PLUS buffer (e.g. prev 14 days to handle rolling windows)
-    const { endDate, start } = getMonthRosterRange(month)
+function isTimeMatch(ruleStart: string, ruleEnd: string, shiftStart: string, shiftEnd: string, tolerance: number) {
+    return Math.abs(getMinutes(shiftStart) - getMinutes(ruleStart)) <= tolerance &&
+        Math.abs(getMinutes(shiftEnd) - getMinutes(ruleEnd)) <= tolerance
+}
 
-    // We already start from previous Monday if needed, but for rolling window constraints (e.g. 7 days),
-    // we might need a huge buffer or just rely on the new extended start.
-    // If the window is 7 days, and we start at the exact beginning of the roster view, we might miss
-    // shifts just before the roster view that contribute to the count.
-    // So let's add a small buffer before the roster start.
-    const queryStart = subDays(start, 7)
-    const queryEnd = parseISO(endDate)
+async function computeMonthValidation(month: string): Promise<RosterWarning[]> {
+    const { startDate, endDate } = getMonthRosterRange(month)
 
-    const shifts = await prisma.shift.findMany({
-        where: {
-            date: {
-                gte: format(queryStart, 'yyyy-MM-dd'),
-                lte: format(queryEnd, 'yyyy-MM-dd')
+    const [shifts, leaves, rules] = await Promise.all([
+        prisma.shift.findMany({
+            where: {
+                date: {
+                    gte: startDate,
+                    lte: endDate
+                }
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        type: true
+                    }
+                },
+                department: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                }
             }
+        }),
+        prisma.leave.findMany({
+            where: {
+                status: 'APPROVED',
+                OR: [
+                    { startDate: { gte: startDate, lte: endDate } },
+                    { endDate: { gte: startDate, lte: endDate } },
+                    { startDate: { lte: startDate }, endDate: { gte: endDate } }
+                ]
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                }
+            }
+        }),
+        prisma.automationRule.findMany({
+            include: {
+                department: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                }
+            }
+        })
+    ])
+
+    const warnings: RosterWarning[] = []
+
+    for (const shift of shifts) {
+        const leave = leaves.find((item) =>
+            item.userId === shift.user_id &&
+            item.startDate <= shift.date &&
+            item.endDate >= shift.date
+        )
+
+        if (leave) {
+            warnings.push({
+                type: 'LEAVE_CONFLICT',
+                date: shift.date,
+                shiftId: shift.id,
+                userId: shift.user_id,
+                departmentId: shift.department_id,
+                startTime: shift.start_time,
+                endTime: shift.end_time,
+                message: `${shift.user.name} is on approved leave but is scheduled for ${shift.start_time}-${shift.end_time}.`
+            })
         }
+    }
+
+    const days = eachDayOfInterval({
+        start: parseISO(startDate),
+        end: parseISO(endDate)
     })
 
-    // Map to ShiftData interface
-    const shiftData: ShiftData[] = shifts.map(s => ({
-        id: s.id,
-        user_id: s.user_id,
-        date: s.date,
-        start_time: s.start_time,
-        end_time: s.end_time,
-        department_id: s.department_id
-    }))
+    for (const day of days) {
+        const dateStr = format(day, 'yyyy-MM-dd')
+        const dayOfWeek = getDay(day)
+        const dayRules = rules.filter((rule) => rule.day_of_week === dayOfWeek)
+        const dayShifts = shifts.filter((shift) => shift.date === dateStr)
 
-    // 3. Run Engine
-    // HARDCODED RULE: Max 5 Days in 7 Day Window
-    const configList: ConstraintConfig[] = [{
-        id: -1,
-        name: 'Max 5 Days',
-        type: 'MAX_CONSECUTIVE_DAYS',
-        params: { limit: 5, window: 7 },
-        severity: 'WARNING',
-        isActive: true,
-        department_id: null
-    }]
+        for (const rule of dayRules) {
+            const matchesFound = dayShifts.filter((shift) =>
+                shift.department_id === rule.department_id &&
+                isTimeMatch(rule.start_time, rule.end_time, shift.start_time, shift.end_time, rule.tolerance) &&
+                (rule.required_type ? shift.user.type === rule.required_type : true) &&
+                (rule.is_smod ? shift.is_smod : true)
+            ).length
 
-    return validateRoster(shiftData, configList, month)
+            const missingCount = Math.max(0, rule.count - matchesFound)
+
+            for (let index = 0; index < missingCount; index += 1) {
+                warnings.push({
+                    type: 'UNDERSTAFFED',
+                    date: dateStr,
+                    departmentId: rule.department_id,
+                    startTime: rule.start_time,
+                    endTime: rule.end_time,
+                    message: `Understaffed: ${rule.department.name} needs ${rule.count} @ ${rule.start_time}-${rule.end_time}${rule.required_type ? ` (${rule.required_type})` : ''}. Found ${matchesFound}.`
+                })
+            }
+        }
+    }
+
+    return warnings
 }
 
 export async function validateMonth(month: string) {

@@ -4,8 +4,8 @@ import prisma from '@/lib/prisma'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { format, parseISO, endOfMonth, eachDayOfInterval, getDay, isSameDay, addDays, subDays } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
+import { getValidationMonthTag, getValidationMonthsForRange } from '@/lib/validation/cache-tags'
 import { Prisma } from '@prisma/client'
-import { getValidationMonthTag } from './constraints'
 
 type EligibleStaffUser = Prisma.UserGetPayload<{
     include: {
@@ -40,16 +40,29 @@ export async function addLeave(data: { userId: number, startDate: string, endDat
             status: 'APPROVED' // Auto-approve for now as per existing logic flow implicitly assumed
         }
     })
-    revalidatePath('/admin/schedule')
-    revalidatePath('/admin/roster')
+    revalidatePath('/admin/schedule', 'page')
+    revalidatePath('/admin/roster', 'page')
+    for (const month of getValidationMonthsForRange(data.startDate, data.endDate)) {
+        revalidateTag(getValidationMonthTag(month), 'max')
+    }
 }
 
 export async function deleteLeave(id: number) {
+    const leave = await prisma.leave.findUnique({
+        where: { id },
+        select: { startDate: true, endDate: true }
+    })
+
     await prisma.leave.delete({
         where: { id }
     })
-    revalidatePath('/admin/schedule')
-    revalidatePath('/admin/roster')
+    revalidatePath('/admin/schedule', 'page')
+    revalidatePath('/admin/roster', 'page')
+    if (leave) {
+        for (const month of getValidationMonthsForRange(leave.startDate, leave.endDate)) {
+            revalidateTag(getValidationMonthTag(month), 'max')
+        }
+    }
 }
 
 export async function getLeavesForMonth(month: string) {
@@ -110,8 +123,8 @@ export async function clearSchedule(month: string) {
         }
     })
 
-    revalidatePath('/admin/roster')
-    revalidateTag(getValidationMonthTag(month))
+    revalidatePath('/admin/roster', 'page')
+    revalidateTag(getValidationMonthTag(month), 'max')
 }
 
 export async function generateSchedule({ month }: SchedulerParams) {
@@ -552,6 +565,6 @@ export async function generateSchedule({ month }: SchedulerParams) {
         })
     }
 
-    revalidatePath('/admin/roster')
-    revalidateTag(getValidationMonthTag(month))
+    revalidatePath('/admin/roster', 'page')
+    revalidateTag(getValidationMonthTag(month), 'max')
 }

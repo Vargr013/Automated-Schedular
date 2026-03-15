@@ -5,7 +5,7 @@ import { revalidatePath, revalidateTag } from 'next/cache'
 import { startOfMonth, endOfMonth, eachDayOfInterval, getDay, format, parseISO, subDays } from 'date-fns'
 import { validateRoster } from '@/lib/validation/engine'
 import { getLeavesForMonth } from './scheduler'
-import { getValidationMonthTag } from './constraints'
+import { getValidationMonthTag } from '@/lib/validation/cache-tags'
 
 function getMonthFromDate(date: string) {
     return date.slice(0, 7)

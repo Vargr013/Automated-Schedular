@@ -1,40 +1,32 @@
 'use client'
 
-import { format, parseISO, eachDayOfInterval, endOfWeek, isSameMonth, addDays, subMonths } from 'date-fns'
+import { format, parseISO, eachDayOfInterval, subMonths } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
-import { isPublicHoliday, getMultiplier } from '@/lib/holidays'
+import { getMultiplier } from '@/lib/holidays'
 import { getShifts } from '@/app/actions/shifts'
 import { getLeavesForRange } from '@/app/actions/scheduler'
 import { useState } from 'react'
+import {
+    buildRosterExportModel,
+    getContrastTextColor,
+    getDayPairColumns,
+    WEEK_COLUMN_COUNT,
+    type ExportLeave,
+    type ExportShift,
+    type ExportUser,
+    type WeekSection,
+    type WeekUserRow
+} from './export-layout'
 
-type User = {
-    id: number
-    name: string
-    type: string // "FULL_TIME" or "PART_TIME"
-    category?: string
+type User = ExportUser & {
     role?: string
 }
 
-type Shift = {
-    id: number
-    user_id: number
-    date: string
-    start_time: string
-    end_time: string
-    is_smod: boolean
-    department: {
-        name: string
-        color_code: string
-    }
-    user: {
-        name: string
-        category?: string
-    }
-}
+type Shift = ExportShift
 
 export default function EnhancedExcelButton({
     users,
-    shifts: initialShifts, // These are for the current month roster view
+    shifts,
     currentMonth
 }: {
     users: User[]
@@ -54,29 +46,21 @@ export default function EnhancedExcelButton({
 
             const workbook = new ExcelJS.Workbook()
 
-        // --- 1. PAYROLL SHEET ---
-        // Range: 22nd of Previous Month -> 21st of Current Month
-        const payrollSheet = workbook.addWorksheet('Payroll')
-
             const currentMonthDate = parseISO(`${currentMonth}-01`)
             const prevMonthDate = subMonths(currentMonthDate, 1)
             const payrollStart = format(prevMonthDate, 'yyyy-MM-22')
             const payrollEnd = format(currentMonthDate, 'yyyy-MM-21')
 
-        // Fetch Data for Payroll Range
-        // NOTE: We need data for this specific range, which might differ from "currentMonth" roster view
             const payrollShifts = await getShifts(payrollStart, payrollEnd)
             const payrollLeaves = await getLeavesForRange(payrollStart, payrollEnd)
 
-        // Setup Headers
+            const payrollSheet = workbook.addWorksheet('Payroll')
             payrollSheet.columns = [
-            { header: 'Name', key: 'name', width: 20 },
-            { header: 'Type', key: 'type', width: 15 },
-            { header: 'Category', key: 'category', width: 15 },
-            { header: 'Total Hours', key: 'hours', width: 15 }
-        ]
-
-        // Header Style
+                { header: 'Name', key: 'name', width: 20 },
+                { header: 'Type', key: 'type', width: 15 },
+                { header: 'Category', key: 'category', width: 15 },
+                { header: 'Total Hours', key: 'hours', width: 15 }
+            ]
             payrollSheet.getRow(1).font = { bold: true }
 
             const payrollRangeDays = eachDayOfInterval({
@@ -84,369 +68,266 @@ export default function EnhancedExcelButton({
                 end: parseISO(payrollEnd)
             })
 
-        // Helper to calculate hours
             const getHours = (start: string, end: string) => {
-            const [h1, m1] = start.split(':').map(Number)
-            const [h2, m2] = end.split(':').map(Number)
-            const diff = (h2 + m2 / 60) - (h1 + m1 / 60)
-            return diff > 0 ? diff : diff + 24
-        }
+                const [h1, m1] = start.split(':').map(Number)
+                const [h2, m2] = end.split(':').map(Number)
+                const diff = (h2 + m2 / 60) - (h1 + m1 / 60)
+                return diff > 0 ? diff : diff + 24
+            }
 
-        // Iterate Users
             for (const user of users) {
-            let totalHours = 0
+                let totalHours = 0
 
-            for (const day of payrollRangeDays) {
-                const dateStr = format(day, 'yyyy-MM-dd')
+                for (const day of payrollRangeDays) {
+                    const dateStr = format(day, 'yyyy-MM-dd')
+                    const shift = payrollShifts.find((item) => item.user_id === user.id && item.date === dateStr)
+                    const onLeave = payrollLeaves.some((leave) =>
+                        leave.userId === user.id &&
+                        leave.startDate <= dateStr &&
+                        leave.endDate >= dateStr
+                    )
 
-                // Find Shift
-                const shift = payrollShifts.find(s => s.user_id === user.id && s.date === dateStr)
+                    if (!shift) continue
 
-                // Find Leave
-                const onLeave = payrollLeaves.some(l =>
-                    l.userId === user.id &&
-                    l.startDate <= dateStr && l.endDate >= dateStr
-                )
-
-                if (shift) {
                     const duration = getHours(shift.start_time, shift.end_time)
+                    if (user.type !== 'FULL_TIME' && onLeave) continue
 
-                    if (user.type !== 'FULL_TIME' && onLeave) {
-                        // PART_TIME on Leave = 0 hours
-                        totalHours += 0
-                    } else {
-                        // Calculate Multiplier
-                        // "Does our excel sheet take into account hours worked on sunday being 1.5x"
-                        // IMPLIED: Leave is NOT "hours worked", so it stays at 1.0x (standard rate)
-                        // If onLeave is true (FT), we count the hours but at standard rate.
-                        // If !onLeave (Worked), we apply the multiplier.
+                    totalHours += duration * (onLeave ? 1 : getMultiplier(dateStr))
+                }
 
-                        let multiplier = 1.0
-                        if (!onLeave) {
-                            multiplier = getMultiplier(dateStr)
-                        }
-
-                        totalHours += (duration * multiplier)
-                    }
+                if (totalHours > 0 || user.type === 'FULL_TIME') {
+                    payrollSheet.addRow({
+                        name: user.name,
+                        type: user.type,
+                        category: user.category,
+                        hours: totalHours.toFixed(2)
+                    })
                 }
             }
 
-            if (totalHours > 0 || user.type === 'FULL_TIME') {
-                payrollSheet.addRow({
-                    name: user.name,
-                    type: user.type,
-                    category: user.category,
-                    hours: totalHours.toFixed(2)
-                })
-            }
-        }
-
-
-        // --- 2. ROSTER SHEET (Existing Logic with updates) ---
             const worksheet = workbook.addWorksheet('Roster')
-
-            const monthDate = parseISO(`${currentMonth}-01`)
             const { start, end } = getMonthRosterRange(currentMonth)
+            const rosterLeaves = await getLeavesForRange(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'))
+            const model = buildRosterExportModel({
+                users,
+                shifts,
+                leaves: rosterLeaves as ExportLeave[],
+                currentMonth
+            })
 
-        // Get all weeks covering the month
-            let currentWeekStart = start // Monday
-            const weeks = []
-
-            while (currentWeekStart < end) {
-            const currentWeekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 })
-            const daysInWeek = eachDayOfInterval({ start: currentWeekStart, end: currentWeekEnd })
-            weeks.push(daysInWeek)
-            currentWeekStart = addDays(currentWeekStart, 7)
-        }
-
-            let currentRow = 1
-
-        // --- FULL HEADER ---
-            worksheet.mergeCells(currentRow, 1, currentRow, 8)
-            const titleCell = worksheet.getCell(currentRow, 1)
-            titleCell.value = 'CityROCK Johannesburg'
-        titleCell.font = { size: 16, bold: true }
-        titleCell.alignment = { horizontal: 'left' }
-            currentRow++
-
-            worksheet.mergeCells(currentRow, 1, currentRow, 8)
-            const subTitleCell = worksheet.getCell(currentRow, 1)
-            subTitleCell.value = `Staff Schedule: ${format(monthDate, 'MMMM yyyy')}`
-        subTitleCell.font = { size: 12, bold: true }
-        subTitleCell.alignment = { horizontal: 'left' }
-            currentRow++
-            currentRow++ // Spacer
-
-        // Helper to convert Hex to ARGB for ExcelJS
-            const getArgb = (hex: string) => {
-                return 'FF' + hex.replace('#', '').toUpperCase()
-            }
-
-        // Define Border Style
             const borderStyle = {
                 top: { style: 'thin' },
                 left: { style: 'thin' },
                 bottom: { style: 'thin' },
                 right: { style: 'thin' }
-            }
+            } as const
 
-        // Re-fetch leaves for Roster Range display
-        // We can reuse getLeavesForRange but we need to await it or fetch it early.
-        // Since we are inside an async function, we can await.
-            const rosterStartStr = format(start, 'yyyy-MM-dd')
-            const rosterEndStr = format(end, 'yyyy-MM-dd')
-            const rosterLeaves = await getLeavesForRange(rosterStartStr, rosterEndStr)
-
-            for (const weekDays of weeks) {
-            // --- Header Rows ---
-
-            // 1. Date Row (e.g., "8-Dec", "9-Dec")
-            const dateRow = worksheet.getRow(currentRow)
-            dateRow.getCell(1).value = 'Part Time' // Placeholder label from screenshot
-            dateRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
-            dateRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF444444' } }
-
-            weekDays.forEach((day, index) => {
-                const cell = dateRow.getCell(index + 2)
-                const isHoliday = isPublicHoliday(format(day, 'yyyy-MM-dd'))
-                cell.value = format(day, 'd-MMM')
-                cell.alignment = { horizontal: 'center' }
-                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: isHoliday ? 'FFB91C1C' : 'FF000000' }
-                }
-                cell.border = borderStyle
+            const getPairedTimeBorder = (position: 'start' | 'end') => ({
+                top: { style: 'thin' },
+                bottom: { style: 'thin' },
+                left: { style: 'thin' },
+                right: position === 'start' ? undefined : { style: 'thin' }
             })
-            currentRow++
 
-            // 2. Day Name Row (e.g., "Monday", "Tuesday")
-            const dayNameRow = worksheet.getRow(currentRow)
-            weekDays.forEach((day, index) => {
-                const cell = dayNameRow.getCell(index + 2)
-                const isHoliday = isPublicHoliday(format(day, 'yyyy-MM-dd'))
-                cell.value = format(day, 'EEEE')
-                cell.alignment = { horizontal: 'center' }
-                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: isHoliday ? 'FFB91C1C' : 'FF000000' }
-                }
-                cell.border = borderStyle
-            })
-            currentRow++
-
-            // --- MOD Row ---
-            const modRow = worksheet.getRow(currentRow)
-            modRow.getCell(1).value = 'MOD'
-            modRow.getCell(1).font = { bold: true }
-            modRow.getCell(1).border = borderStyle
-            modRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCCCCC' } } // Grey
-
-            weekDays.forEach((day, index) => {
-                const dateStr = format(day, 'yyyy-MM-dd')
-                const modShifts = initialShifts.filter(s => s.date === dateStr && s.department.name === 'Management (MOD)')
-                const cell = modRow.getCell(index + 2)
-
-                if (modShifts.length > 0) {
-                    const uniqueNames = Array.from(new Set(modShifts.map(s => s.user.name)))
-                    cell.value = uniqueNames.join('/')
-                }
-                cell.alignment = { horizontal: 'center' }
-                cell.border = borderStyle
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCCCCC' } }
-            })
-            currentRow++
-
-            // --- SMOD Row ---
-            const smodRow = worksheet.getRow(currentRow)
-            smodRow.getCell(1).value = 'SMOD'
-            smodRow.getCell(1).font = { bold: true }
-            smodRow.getCell(1).border = borderStyle
-            smodRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCCCCC' } } // Grey
-
-            weekDays.forEach((day, index) => {
-                const dateStr = format(day, 'yyyy-MM-dd')
-                const smodShifts = initialShifts.filter(s => s.date === dateStr && (s.department.name === 'Shift Manager (SMOD)' || s.is_smod))
-                const cell = smodRow.getCell(index + 2)
-
-                if (smodShifts.length > 0) {
-                    const uniqueNames = Array.from(new Set(smodShifts.map(s => s.user.name)))
-                    cell.value = uniqueNames.join('/')
-                }
-                cell.alignment = { horizontal: 'center' }
-                cell.border = borderStyle
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCCCCC' } }
-            })
-            currentRow++
-
-            // --- Group by Type then Category ---
-            const CATEGORY_ORDER = ['Management', 'Shift Manager', 'Cafe', 'Shop', 'Front Desk']
-
-            // Full Time Section
-            const ftHeaderRow = worksheet.getRow(currentRow)
-            ftHeaderRow.getCell(1).value = 'Full Time & Cafe'
-            ftHeaderRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
-            ftHeaderRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF333333' } } // Dark Grey
-            worksheet.mergeCells(currentRow, 1, currentRow, 8)
-            ftHeaderRow.getCell(1).alignment = { horizontal: 'center' }
-            currentRow++
-
-            for (const category of CATEGORY_ORDER) {
-                const categoryUsers = users.filter(u => u.type === 'FULL_TIME' && (u.category || 'Front Desk') === category)
-
-                if (categoryUsers.length === 0) continue
-
-                // Category Header
-                const headerRow = worksheet.getRow(currentRow)
-                const headerLabel = category === 'Management' ? 'Management (MOD)' :
-                    category === 'Shift Manager' ? 'Shift Manager (SMOD)' :
-                        category
-
-                headerRow.getCell(1).value = headerLabel
-                headerRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                headerRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF666666' } }
-
-                // Merge across
-                worksheet.mergeCells(currentRow, 1, currentRow, 8)
-                headerRow.getCell(1).alignment = { horizontal: 'center' }
-                currentRow++
-
-                // User Rows
-                for (const user of categoryUsers) {
-                    const row = worksheet.getRow(currentRow)
-                    row.getCell(1).value = user.name
-                    row.getCell(1).font = { bold: true }
-                    row.getCell(1).border = borderStyle
-                    row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDDDDD' } }
-
-                    weekDays.forEach((day, index) => {
-                        const dateStr = format(day, 'yyyy-MM-dd')
-                        const shift = initialShifts.find(s => s.user_id === user.id && s.date === dateStr)
-                        const onLeave = rosterLeaves.some(l => l.userId === user.id && l.startDate <= dateStr && l.endDate >= dateStr)
-
-                        const cell = row.getCell(index + 2)
-                        cell.border = borderStyle
-
-                        if (onLeave) {
-                            // Check request: "add a black colour to approved leave days on the time sheet excel export"
-                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } } // Black
-                            // Keep text if shift exists? Yes, shift data is requested to be used.
-                            if (shift) {
-                                cell.value = `${shift.start_time} - ${shift.end_time}`
-                                cell.font = { color: { argb: 'FFFFFFFF' } } // White text
-                            } else {
-                                cell.value = 'LEAVE'
-                                cell.font = { color: { argb: 'FFFFFFFF' } }
-                            }
-                            cell.alignment = { horizontal: 'center' }
-                        } else if (shift) {
-                            cell.value = `${shift.start_time} - ${shift.end_time}`
-                            cell.alignment = { horizontal: 'center', wrapText: true }
-                            // Apply department color
-                            if (shift.department.color_code) {
-                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: getArgb(shift.department.color_code) } }
-                            }
-                        } else {
-                            // Grey out if not in month or highlight if holiday
-                            const isHoliday = isPublicHoliday(dateStr)
-                            if (isHoliday) {
-                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } } // Light holiday red
-                            } else if (!isSameMonth(day, monthDate)) {
-                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } }
-                            }
-                        }
-                    })
-                    currentRow++
+            const fillRange = (rowNumber: number, startColumn: number, endColumn: number, argb: string) => {
+                for (let column = startColumn; column <= endColumn; column += 1) {
+                    const cell = worksheet.getCell(rowNumber, column)
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } }
+                    cell.border = borderStyle
                 }
             }
 
-            // Part Time Section
-            const ptHeaderRow = worksheet.getRow(currentRow)
-            ptHeaderRow.getCell(1).value = 'Part Time'
-            ptHeaderRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
-            ptHeaderRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF333333' } } // Dark Grey
-            worksheet.mergeCells(currentRow, 1, currentRow, 8)
-            ptHeaderRow.getCell(1).alignment = { horizontal: 'center' }
-            currentRow++
+            const mergePair = (rowNumber: number, dayIndex: number, value: string, fillArgb: string, fontArgb = 'FFFFFFFF') => {
+                const { startColumn, endColumn } = getDayPairColumns(dayIndex)
+                worksheet.mergeCells(rowNumber, startColumn, rowNumber, endColumn)
+                const cell = worksheet.getCell(rowNumber, startColumn)
+                cell.value = value
+                cell.alignment = { horizontal: 'center', vertical: 'middle' }
+                cell.font = { bold: true, color: { argb: fontArgb } }
+                fillRange(rowNumber, startColumn, endColumn, fillArgb)
+            }
 
-            for (const category of CATEGORY_ORDER) {
-                const categoryUsers = users.filter(u => u.type !== 'FULL_TIME' && (u.category || 'Front Desk') === category)
+            const styleNameCell = (rowNumber: number, value: string, fillArgb: string, fontArgb = 'FFFFFFFF') => {
+                const cell = worksheet.getCell(rowNumber, 1)
+                cell.value = value
+                cell.font = { bold: true, color: { argb: fontArgb } }
+                cell.alignment = { horizontal: 'left', vertical: 'middle' }
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillArgb } }
+                cell.border = borderStyle
+            }
 
-                if (categoryUsers.length === 0) continue
+            const renderSection = (startRow: number, title: string, sections: WeekSection[]) => {
+                let currentRow = startRow
 
-                // Category Header
-                const headerRow = worksheet.getRow(currentRow)
-                const headerLabel = category === 'Management' ? 'Management (MOD)' :
-                    category === 'Shift Manager' ? 'Shift Manager (SMOD)' :
-                        category
+                worksheet.mergeCells(currentRow, 1, currentRow, WEEK_COLUMN_COUNT)
+                const headerCell = worksheet.getCell(currentRow, 1)
+                headerCell.value = title
+                headerCell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 }
+                headerCell.alignment = { horizontal: 'center', vertical: 'middle' }
+                fillRange(currentRow, 1, WEEK_COLUMN_COUNT, 'FF4A4A4A')
+                worksheet.getRow(currentRow).height = 18
+                currentRow += 1
 
-                headerRow.getCell(1).value = headerLabel
-                headerRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                headerRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF666666' } }
+                for (const section of sections) {
+                    worksheet.mergeCells(currentRow, 1, currentRow, WEEK_COLUMN_COUNT)
+                    const sectionCell = worksheet.getCell(currentRow, 1)
+                    sectionCell.value = section.label
+                    sectionCell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+                    sectionCell.alignment = { horizontal: 'center', vertical: 'middle' }
+                    fillRange(currentRow, 1, WEEK_COLUMN_COUNT, 'FF7A7A7A')
+                    worksheet.getRow(currentRow).height = 18
+                    currentRow += 1
 
-                // Merge across
-                worksheet.mergeCells(currentRow, 1, currentRow, 8)
-                headerRow.getCell(1).alignment = { horizontal: 'center' }
-                currentRow++
-
-                // User Rows
-                for (const user of categoryUsers) {
-                    const row = worksheet.getRow(currentRow)
-                    row.getCell(1).value = user.name
-                    row.getCell(1).font = { bold: true }
-                    row.getCell(1).border = borderStyle
-                    row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDDDDD' } }
-
-                    weekDays.forEach((day, index) => {
-                        const dateStr = format(day, 'yyyy-MM-dd')
-                        const shift = initialShifts.find(s => s.user_id === user.id && s.date === dateStr)
-                        const onLeave = rosterLeaves.some(l => l.userId === user.id && l.startDate <= dateStr && l.endDate >= dateStr)
-
-                        const cell = row.getCell(index + 2)
-                        cell.border = borderStyle
-
-                        if (onLeave) {
-                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } } // Black
-                            if (shift) {
-                                cell.value = `${shift.start_time} - ${shift.end_time}` // Show shift but blacked out
-                                cell.font = { color: { argb: 'FFFFFFFF' } }
-                            } else {
-                                cell.value = 'LEAVE'
-                                cell.font = { color: { argb: 'FFFFFFFF' } }
-                            }
-                            cell.alignment = { horizontal: 'center' }
-                        } else if (shift) {
-                            cell.value = `${shift.start_time} - ${shift.end_time}`
-                            cell.alignment = { horizontal: 'center', wrapText: true }
-                            // Apply department color
-                            if (shift.department.color_code) {
-                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: getArgb(shift.department.color_code) } }
-                            }
-                        } else {
-                            // Grey out if not in month (optional, but good for visuals)
-                            if (!isSameMonth(day, monthDate)) {
-                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } }
-                            }
-                        }
-                    })
-                    currentRow++
+                    for (const row of section.rows) {
+                        renderUserRow(currentRow, row)
+                        currentRow += 1
+                    }
                 }
+
+                return currentRow
             }
 
-            // Add spacer row
-            currentRow++
-        }
+            const renderUserRow = (rowNumber: number, row: WeekUserRow) => {
+                const excelRow = worksheet.getRow(rowNumber)
+                styleNameCell(rowNumber, row.user.name, 'FF5B5B5B')
+                worksheet.getCell(rowNumber, 1).alignment = { horizontal: 'right', vertical: 'middle' }
+                worksheet.getCell(rowNumber, 1).font = { size: 11, name: 'Calibri', color: { argb: 'FFFFFFFF' } }
 
-        // Adjust column widths
-            worksheet.getColumn(1).width = 20
-            for (let i = 2; i <= 8; i++) {
-                worksheet.getColumn(i).width = 15
+                row.dayCells.forEach((dayCell, dayIndex) => {
+                    const { startColumn, endColumn } = getDayPairColumns(dayIndex)
+                    const startCell = excelRow.getCell(startColumn)
+                    const endCell = excelRow.getCell(endColumn)
+
+                    startCell.value = dayCell.startTime
+                    endCell.value = dayCell.endTime
+                    startCell.alignment = { horizontal: 'center', vertical: 'middle' }
+                    endCell.alignment = { horizontal: 'center', vertical: 'middle' }
+                    startCell.border = getPairedTimeBorder('start')
+                    endCell.border = getPairedTimeBorder('end')
+
+                    if (dayCell.onLeave) {
+                        const label = dayCell.startTime ? dayCell.startTime : 'LEAVE'
+                        startCell.value = label
+                        endCell.value = dayCell.endTime
+                        startCell.font = { size: 12, name: 'Calibri', color: { argb: 'FFFFFFFF' } }
+                        endCell.font = { size: 12, name: 'Calibri', color: { argb: 'FFFFFFFF' } }
+                        startCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } }
+                        endCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } }
+                        return
+                    }
+
+                    if (dayCell.departmentColor) {
+                        const argb = `FF${dayCell.departmentColor.replace('#', '').toUpperCase()}`
+                        const fontArgb = getContrastTextColor(dayCell.departmentColor) === 'FFFFFF' ? 'FFFFFFFF' : 'FF000000'
+                        startCell.font = { size: 12, name: 'Calibri', color: { argb: fontArgb } }
+                        endCell.font = { size: 12, name: 'Calibri', color: { argb: fontArgb } }
+                        startCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } }
+                        endCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } }
+                        return
+                    }
+
+                    const emptyArgb = !dayCell.isInMonth ? 'FF9A9A9A' : dayCell.isHoliday ? 'FFBDBDBD' : 'FF8A8A8A'
+                    const textArgb = !dayCell.isInMonth ? 'FFDDDDDD' : 'FFCCCCCC'
+                    startCell.font = { size: 11, name: 'Calibri', color: { argb: textArgb } }
+                    endCell.font = { size: 11, name: 'Calibri', color: { argb: textArgb } }
+                    startCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: emptyArgb } }
+                    endCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: emptyArgb } }
+                })
+
+                excelRow.height = 22
             }
 
-        // Generate buffer
+            let currentRow = 1
+            worksheet.mergeCells(currentRow, 1, currentRow, WEEK_COLUMN_COUNT)
+            const titleCell = worksheet.getCell(currentRow, 1)
+            titleCell.value = 'CityROCK Johannesburg'
+            titleCell.font = { size: 16, bold: true }
+            titleCell.alignment = { horizontal: 'left' }
+            currentRow += 1
+
+            worksheet.mergeCells(currentRow, 1, currentRow, WEEK_COLUMN_COUNT)
+            const subTitleCell = worksheet.getCell(currentRow, 1)
+            subTitleCell.value = `Staff Schedule: ${model.monthTitle}`
+            subTitleCell.font = { size: 12, bold: true }
+            subTitleCell.alignment = { horizontal: 'left' }
+            currentRow += 2
+
+            for (const week of model.weeks) {
+                worksheet.mergeCells(currentRow, 1, currentRow, WEEK_COLUMN_COUNT)
+                const weekCell = worksheet.getCell(currentRow, 1)
+                weekCell.value = week.weekLabel
+                weekCell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+                weekCell.alignment = { horizontal: 'left', vertical: 'middle' }
+                fillRange(currentRow, 1, WEEK_COLUMN_COUNT, 'FF2B2B2B')
+                worksheet.getRow(currentRow).height = 18
+                currentRow += 1
+
+                styleNameCell(currentRow, 'Dates', 'FF111111')
+                week.days.forEach((day, dayIndex) => {
+                    const { startColumn } = getDayPairColumns(dayIndex)
+                    worksheet.mergeCells(currentRow, startColumn, currentRow, startColumn + 1)
+                    const cell = worksheet.getCell(currentRow, startColumn)
+                    cell.value = format(day, 'd-MMM')
+                    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' }
+                    const fillArgb = 'FF000000'
+                    fillRange(currentRow, startColumn, startColumn + 1, fillArgb)
+                })
+                worksheet.getRow(currentRow).height = 20
+                currentRow += 1
+
+                styleNameCell(currentRow, 'Day', 'FF111111')
+                week.days.forEach((day, dayIndex) => {
+                    const { startColumn } = getDayPairColumns(dayIndex)
+                    worksheet.mergeCells(currentRow, startColumn, currentRow, startColumn + 1)
+                    const cell = worksheet.getCell(currentRow, startColumn)
+                    cell.value = format(day, 'EEEE')
+                    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' }
+                    fillRange(currentRow, startColumn, startColumn + 1, 'FF000000')
+                })
+                worksheet.getRow(currentRow).height = 20
+                currentRow += 1
+
+                styleNameCell(currentRow, 'Intro', 'FFF97316')
+                week.introNames.forEach((name, dayIndex) => {
+                    const { startColumn, endColumn } = getDayPairColumns(dayIndex)
+                    const labelCell = worksheet.getCell(currentRow, startColumn)
+                    const nameCell = worksheet.getCell(currentRow, endColumn)
+                    labelCell.value = name ? 'Intro' : ''
+                    nameCell.value = name
+                    labelCell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+                    nameCell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+                    labelCell.alignment = { horizontal: 'left', vertical: 'middle' }
+                    nameCell.alignment = { horizontal: 'center', vertical: 'middle' }
+                    labelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF97316' } }
+                    nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF97316' } }
+                    labelCell.border = borderStyle
+                    nameCell.border = borderStyle
+                })
+                worksheet.getRow(currentRow).height = 20
+                currentRow += 1
+
+                styleNameCell(currentRow, 'MOD', 'FFB3B3B3', 'FF000000')
+                week.modNames.forEach((value, dayIndex) => mergePair(currentRow, dayIndex, value, 'FFB3B3B3', 'FF000000'))
+                worksheet.getRow(currentRow).height = 18
+                currentRow += 1
+
+                styleNameCell(currentRow, 'SMOD', 'FF9F9F9F', 'FF000000')
+                week.smodNames.forEach((value, dayIndex) => mergePair(currentRow, dayIndex, value, 'FF9F9F9F', 'FF000000'))
+                worksheet.getRow(currentRow).height = 18
+                currentRow += 1
+
+                currentRow = renderSection(currentRow, 'Full time & Cafe', week.fullTimeSections)
+                currentRow = renderSection(currentRow, 'Part time', week.partTimeSections)
+                currentRow += 1
+            }
+
+            worksheet.getColumn(1).width = 18
+            for (let column = 2; column <= WEEK_COLUMN_COUNT; column += 1) {
+                worksheet.getColumn(column).width = 8.5
+            }
+
             const buffer = await workbook.xlsx.writeBuffer()
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
             saveAs(blob, `Roster_${currentMonth}_Enhanced.xlsx`)
@@ -460,7 +341,7 @@ export default function EnhancedExcelButton({
             onClick={handleExport}
             className="btn btn-secondary"
             disabled={isExporting}
-            style={{ marginLeft: '10px', backgroundColor: '#107c41', color: 'white' }} // Excel Green
+            style={{ marginLeft: '10px', backgroundColor: '#107c41', color: 'white' }}
         >
             {isExporting ? 'Exporting Excel...' : 'Export Excel (Enhanced)'}
         </button>

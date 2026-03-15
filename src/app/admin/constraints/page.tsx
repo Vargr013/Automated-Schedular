@@ -14,6 +14,9 @@ export default async function ConstraintsPage() {
     return (
         <div>
             <h1 style={{ marginBottom: '2rem' }}>Limitation Rules</h1>
+            <p style={{ margin: '0 0 1.5rem', color: 'var(--muted-foreground)', maxWidth: '48rem' }}>
+                This area no longer drives roster alerts. Current roster alerts are based only on approved leave conflicts and automation-rule staffing gaps.
+            </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) 2fr', gap: '2rem' }}>
                 <div>

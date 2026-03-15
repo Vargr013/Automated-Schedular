@@ -1,39 +1,32 @@
 'use client'
 
-import { format, parseISO, eachDayOfInterval, endOfWeek, addDays, isSameMonth } from 'date-fns'
-import { getMonthRosterRange } from '@/lib/date-utils'
-import { isPublicHoliday } from '@/lib/holidays'
-import { getLeavesForRange } from '@/app/actions/scheduler'
 import { useState } from 'react'
+import { format } from 'date-fns'
+import { getLeavesForRange } from '@/app/actions/scheduler'
+import { getMonthRosterRange } from '@/lib/date-utils'
+import {
+    buildRosterExportModel,
+    getContrastTextColor,
+    hexToRgb,
+    type ExportLeave,
+    type ExportShift,
+    type ExportUser,
+    type WeekSection,
+    type WeekUserRow
+} from './export-layout'
 
-type User = {
-    id: number
-    name: string
-    type: string
-    category?: string
-}
+type User = ExportUser
+type Shift = ExportShift
 
-type Shift = {
-    id: number
-    user_id: number
-    date: string
-    start_time: string
-    end_time: string
-    is_smod: boolean
-    department: {
-        name: string
-        color_code: string
+type AutoTableCell = {
+    content: string
+    colSpan?: number
+    styles?: {
+        fillColor?: [number, number, number]
+        textColor?: [number, number, number]
+        fontStyle?: 'normal' | 'bold'
+        halign?: 'left' | 'center' | 'right'
     }
-    user: {
-        name: string
-        category?: string
-    }
-}
-
-type LeaveRangeItem = {
-    userId: number
-    startDate: string
-    endDate: string
 }
 
 export default function EnhancedPdfButton({
@@ -56,277 +49,332 @@ export default function EnhancedPdfButton({
                 import('jspdf-autotable')
             ])
 
-            const doc = new jsPDF('l', 'mm', 'a4') // Landscape
-
-            const monthDate = parseISO(`${currentMonth}-01`)
             const { start, end } = getMonthRosterRange(currentMonth)
+            const leaves = await getLeavesForRange(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'))
+            const model = buildRosterExportModel({
+                users,
+                shifts,
+                leaves: leaves as ExportLeave[],
+                currentMonth
+            })
 
-        // Fetch leaves
-        const startStr = format(start, 'yyyy-MM-dd')
-        const endStr = format(end, 'yyyy-MM-dd')
-            const leaves = await getLeavesForRange(startStr, endStr)
+            const doc = new jsPDF('l', 'mm', 'a4')
+            const pageWidth = doc.internal.pageSize.getWidth()
+            const marginLeft = 10
+            const marginRight = 10
+            const usableWidth = pageWidth - marginLeft - marginRight
+            const nameColumnWidth = 26
+            const dayColumnWidth = (usableWidth - nameColumnWidth) / 14
 
-        // Get all weeks
-            let currentWeekStart = start
-            const weeks = []
+            const sectionHeaderRow = (label: string): AutoTableCell[] => [
+                {
+                    content: label,
+                    colSpan: 15,
+                    styles: {
+                        fillColor: [74, 74, 74],
+                        textColor: [255, 255, 255],
+                        fontStyle: 'bold',
+                        halign: 'center'
+                    }
+                }
+            ]
 
-            while (currentWeekStart < end) {
-                const currentWeekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 })
-                const daysInWeek = eachDayOfInterval({ start: currentWeekStart, end: currentWeekEnd })
-                weeks.push(daysInWeek)
-                currentWeekStart = addDays(currentWeekStart, 7)
+            const categoryHeaderRow = (label: string): AutoTableCell[] => [
+                {
+                    content: label,
+                    colSpan: 15,
+                    styles: {
+                        fillColor: [122, 122, 122],
+                        textColor: [255, 255, 255],
+                        fontStyle: 'bold',
+                        halign: 'center'
+                    }
+                }
+            ]
+
+            const summaryRow = (label: string, values: string[], fillColor: [number, number, number], textColor: [number, number, number]): AutoTableCell[] => {
+                const row: AutoTableCell[] = [{
+                    content: label,
+                    styles: {
+                        fillColor,
+                        textColor,
+                        fontStyle: 'bold',
+                        halign: 'left'
+                    }
+                }]
+
+                values.forEach((value) => {
+                    row.push({
+                        content: value,
+                        colSpan: 2,
+                        styles: {
+                            fillColor,
+                            textColor,
+                            fontStyle: 'bold',
+                            halign: 'center'
+                        }
+                    })
+                })
+
+                return row
             }
 
-            let finalY = 25 // Start Y position lower to make space for header
+            const introRow = (values: string[]): AutoTableCell[] => {
+                const row: AutoTableCell[] = [{
+                    content: 'Intro',
+                    styles: {
+                        fillColor: [249, 115, 22],
+                        textColor: [255, 255, 255],
+                        fontStyle: 'bold',
+                        halign: 'left'
+                    }
+                }]
 
-        // Full Header
+                values.forEach((value) => {
+                    row.push({
+                        content: value ? 'Intro' : '',
+                        styles: {
+                            fillColor: [249, 115, 22],
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold',
+                            halign: 'left'
+                        }
+                    })
+                    row.push({
+                        content: value,
+                        styles: {
+                            fillColor: [249, 115, 22],
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold',
+                            halign: 'center'
+                        }
+                    })
+                })
+
+                return row
+            }
+
+            const userRow = (row: WeekUserRow): AutoTableCell[] => {
+                const cells: AutoTableCell[] = [{
+                    content: row.user.name,
+                    styles: {
+                        fillColor: [91, 91, 91],
+                        textColor: [255, 255, 255],
+                        fontStyle: 'normal',
+                        halign: 'right'
+                    }
+                }]
+
+                row.dayCells.forEach((dayCell) => {
+                    if (dayCell.onLeave) {
+                        cells.push({
+                            content: dayCell.startTime || 'LEAVE',
+                            styles: {
+                                fillColor: [0, 0, 0],
+                                textColor: [255, 255, 255],
+                                fontStyle: 'normal',
+                                halign: 'center'
+                            }
+                        })
+                        cells.push({
+                            content: dayCell.endTime,
+                            styles: {
+                                fillColor: [0, 0, 0],
+                                textColor: [255, 255, 255],
+                                fontStyle: 'normal',
+                                halign: 'center'
+                            }
+                        })
+                        return
+                    }
+
+                    if (dayCell.departmentColor) {
+                        const { r, g, b } = hexToRgb(dayCell.departmentColor)
+                        const textColor = getContrastTextColor(dayCell.departmentColor) === 'FFFFFF'
+                            ? [255, 255, 255]
+                            : [0, 0, 0]
+
+                        cells.push({
+                            content: dayCell.startTime,
+                            styles: {
+                                fillColor: [r, g, b],
+                                textColor: textColor as [number, number, number],
+                                fontStyle: 'normal',
+                                halign: 'center'
+                            }
+                        })
+                        cells.push({
+                            content: dayCell.endTime,
+                            styles: {
+                                fillColor: [r, g, b],
+                                textColor: textColor as [number, number, number],
+                                fontStyle: 'normal',
+                                halign: 'center'
+                            }
+                        })
+                        return
+                    }
+
+                    const emptyFill: [number, number, number] = !dayCell.isInMonth
+                        ? [154, 154, 154]
+                        : dayCell.isHoliday
+                            ? [189, 189, 189]
+                            : [138, 138, 138]
+
+                    cells.push({
+                        content: '',
+                        styles: {
+                            fillColor: emptyFill,
+                            textColor: [220, 220, 220],
+                            halign: 'center'
+                        }
+                    })
+                    cells.push({
+                        content: '',
+                        styles: {
+                            fillColor: emptyFill,
+                            textColor: [220, 220, 220],
+                            halign: 'center'
+                        }
+                    })
+                })
+
+                return cells
+            }
+
+            const pushSection = (body: AutoTableCell[][], title: string, sections: WeekSection[]) => {
+                body.push(sectionHeaderRow(title))
+                sections.forEach((section) => {
+                    body.push(categoryHeaderRow(section.label))
+                    section.rows.forEach((row) => body.push(userRow(row)))
+                })
+            }
+
             doc.setFontSize(18)
-            doc.setTextColor(0, 0, 0)
-            doc.text('CityROCK Johannesburg', 14, 12)
-            doc.setFontSize(12)
-            doc.text(`Staff Schedule: ${format(monthDate, 'MMMM yyyy')}`, 14, 18)
+            doc.text('CityROCK Johannesburg', marginLeft, 12)
+            doc.setFontSize(11)
+            doc.text(`Staff Schedule: ${model.monthTitle}`, marginLeft, 18)
             doc.setLineWidth(0.5)
-            doc.line(14, 20, 283, 20) // Header separator
+            doc.line(marginLeft, 20, pageWidth - marginRight, 20)
 
-            weeks.forEach((weekDays) => {
-            // Check if we need a new page
-            if (finalY > 180) {
-                doc.addPage()
-                finalY = 15
-            }
+            let startY = 24
 
-            const body = []
-
-            // 1. Date Row
-            const dateRow = ['Staff Member', ...weekDays.map(d => format(d, 'd-MMM'))]
-
-            // 2. Day Name Row
-            const dayNameRow = ['', ...weekDays.map(d => format(d, 'EEEE'))]
-
-            // 3. MOD Row
-            const modRow = ['MOD']
-            weekDays.forEach(day => {
-                const dateStr = format(day, 'yyyy-MM-dd')
-                const modShifts = shifts.filter(s => s.date === dateStr && s.department.name === 'Management (MOD)')
-                if (modShifts.length > 0) {
-                    const uniqueNames = Array.from(new Set(modShifts.map(s => s.user.name)))
-                    modRow.push(uniqueNames.join('/'))
-                } else {
-                    modRow.push('')
+            model.weeks.forEach((week, index) => {
+                if (index > 0) {
+                    doc.addPage()
+                    startY = 14
                 }
-            })
-            body.push(modRow)
 
-            // 4. SMOD Row
-            const smodRow = ['SMOD']
-            weekDays.forEach(day => {
-                const dateStr = format(day, 'yyyy-MM-dd')
-                const smodShifts = shifts.filter(s => s.date === dateStr && (s.department.name === 'Shift Manager (SMOD)' || s.is_smod))
-                if (smodShifts.length > 0) {
-                    const uniqueNames = Array.from(new Set(smodShifts.map(s => s.user.name)))
-                    smodRow.push(uniqueNames.join('/'))
-                } else {
-                    smodRow.push('')
-                }
-            })
-            body.push(smodRow)
+                doc.setFontSize(10)
+                doc.setTextColor(255, 255, 255)
+                doc.setFillColor(43, 43, 43)
+                doc.rect(marginLeft, startY, usableWidth, 7, 'F')
+                doc.text(week.weekLabel, marginLeft + 2, startY + 4.7)
+                doc.setTextColor(0, 0, 0)
 
-            // 4. Group by Type then Category
-            const CATEGORY_ORDER = ['Management', 'Shift Manager', 'Cafe', 'Shop', 'Front Desk']
-
-            // Full Time Section
-            body.push(['Full Time & Cafe', '', '', '', '', '', '', ''])
-
-            CATEGORY_ORDER.forEach(category => {
-                const categoryUsers = users.filter(u => u.type === 'FULL_TIME' && (u.category || 'Front Desk') === category)
-
-                if (categoryUsers.length === 0) return
-
-                // Category Header
-                const headerLabel = category === 'Management' ? 'Management (MOD)' :
-                    category === 'Shift Manager' ? 'Shift Manager (SMOD)' :
-                        category
-
-                body.push([headerLabel, '', '', '', '', '', '', ''])
-
-                // User Rows
-                categoryUsers.forEach(user => {
-                    const row = [user.name]
-                    weekDays.forEach(day => {
-                        const dateStr = format(day, 'yyyy-MM-dd')
-                        const shift = shifts.find(s => s.user_id === user.id && s.date === dateStr)
-                        if (shift) {
-                            row.push(`${shift.start_time} - ${shift.end_time}`)
-                        } else {
-                            row.push('')
+                const head: AutoTableCell[][] = [[
+                    {
+                        content: 'Dates',
+                        styles: {
+                            fillColor: [17, 17, 17],
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold',
+                            halign: 'left'
                         }
-                    })
-                    body.push(row)
-                })
-            })
-
-            // Part Time Section
-            body.push(['Part Time', '', '', '', '', '', '', ''])
-
-            CATEGORY_ORDER.forEach(category => {
-                const categoryUsers = users.filter(u => u.type !== 'FULL_TIME' && (u.category || 'Front Desk') === category)
-
-                if (categoryUsers.length === 0) return
-
-                // Category Header
-                const headerLabel = category === 'Management' ? 'Management (MOD)' :
-                    category === 'Shift Manager' ? 'Shift Manager (SMOD)' :
-                        category
-
-                body.push([headerLabel, '', '', '', '', '', '', ''])
-
-                // User Rows
-                categoryUsers.forEach(user => {
-                    const row = [user.name]
-                    weekDays.forEach(day => {
-                        const dateStr = format(day, 'yyyy-MM-dd')
-                        const shift = shifts.find(s => s.user_id === user.id && s.date === dateStr)
-                        if (shift) {
-                            row.push(`${shift.start_time} - ${shift.end_time}`)
-                        } else {
-                            row.push('')
+                    },
+                    ...week.days.map((day) => ({
+                        content: format(day, 'd-MMM'),
+                        colSpan: 2,
+                        styles: {
+                            fillColor: [0, 0, 0] as [number, number, number],
+                            textColor: [255, 255, 255] as [number, number, number],
+                            fontStyle: 'bold' as const,
+                            halign: 'center' as const
                         }
-                    })
-                    body.push(row)
-                })
-            })
+                    }))
+                ], [
+                    {
+                        content: 'Day',
+                        styles: {
+                            fillColor: [17, 17, 17],
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold',
+                            halign: 'left'
+                        }
+                    },
+                    ...week.days.map((day) => ({
+                        content: format(day, 'EEEE'),
+                        colSpan: 2,
+                        styles: {
+                            fillColor: [0, 0, 0] as [number, number, number],
+                            textColor: [255, 255, 255] as [number, number, number],
+                            fontStyle: 'bold' as const,
+                            halign: 'center' as const
+                        }
+                    }))
+                ]]
 
-            autoTable(doc, {
-                startY: finalY,
-                head: [dateRow, dayNameRow],
-                body: body,
-                theme: 'grid',
-                styles: {
-                    fontSize: 7,
-                    cellPadding: 1,
-                    overflow: 'linebreak',
-                    halign: 'center',
-                    valign: 'middle',
-                    lineWidth: 0.1,
-                    lineColor: [0, 0, 0]
-                },
-                columnStyles: {
-                    0: { cellWidth: 25, fontStyle: 'bold', halign: 'left' }
-                },
-                didParseCell: function (data) {
-                    const rowIndex = data.row.index
-                    const colIndex = data.column.index
-                    const rawRow = data.row.raw as string[]
-                    const section = data.section
-                    const date = colIndex > 0 ? weekDays[colIndex - 1] : null
-                    const isHoliday = date ? isPublicHoliday(format(date, 'yyyy-MM-dd')) : false
+                const body: AutoTableCell[][] = [
+                    introRow(week.introNames),
+                    summaryRow('MOD', week.modNames, [179, 179, 179], [0, 0, 0]),
+                    summaryRow('SMOD', week.smodNames, [159, 159, 159], [0, 0, 0])
+                ]
 
-                    // --- Header Styling ---
-                    if (section === 'head') {
-                        // Date Row (Row 0)
-                        if (rowIndex === 0) {
-                            if (colIndex === 0) {
-                                data.cell.styles.fillColor = [68, 68, 68] // Dark Grey
-                                data.cell.styles.textColor = [255, 255, 255]
+                pushSection(body, 'Full time & Cafe', week.fullTimeSections)
+                pushSection(body, 'Part time', week.partTimeSections)
+
+                autoTable(doc, {
+                    startY: startY + 7,
+                    head,
+                    body,
+                    theme: 'grid',
+                    margin: { left: marginLeft, right: marginRight },
+                    styles: {
+                        font: 'helvetica',
+                        fontSize: 8,
+                        cellPadding: 1.35,
+                        overflow: 'linebreak',
+                        halign: 'center',
+                        valign: 'middle',
+                        lineWidth: 0.1,
+                        lineColor: [0, 0, 0]
+                    },
+                    columnStyles: {
+                        0: { cellWidth: nameColumnWidth, halign: 'right' },
+                        1: { cellWidth: dayColumnWidth },
+                        2: { cellWidth: dayColumnWidth },
+                        3: { cellWidth: dayColumnWidth },
+                        4: { cellWidth: dayColumnWidth },
+                        5: { cellWidth: dayColumnWidth },
+                        6: { cellWidth: dayColumnWidth },
+                        7: { cellWidth: dayColumnWidth },
+                        8: { cellWidth: dayColumnWidth },
+                        9: { cellWidth: dayColumnWidth },
+                        10: { cellWidth: dayColumnWidth },
+                        11: { cellWidth: dayColumnWidth },
+                        12: { cellWidth: dayColumnWidth },
+                        13: { cellWidth: dayColumnWidth },
+                        14: { cellWidth: dayColumnWidth }
+                    },
+                    didParseCell(data) {
+                        const raw = data.cell.raw as AutoTableCell | string
+                        if (typeof raw === 'object' && raw.styles) {
+                            if (raw.styles.fillColor) data.cell.styles.fillColor = raw.styles.fillColor
+                            if (raw.styles.textColor) data.cell.styles.textColor = raw.styles.textColor
+                            if (raw.styles.fontStyle) data.cell.styles.fontStyle = raw.styles.fontStyle
+                            if (raw.styles.halign) data.cell.styles.halign = raw.styles.halign
+                        }
+
+                        if (data.section === 'body' && data.column.index > 0) {
+                            const dayColumnOffset = (data.column.index - 1) % 2
+                            if (dayColumnOffset === 0) {
+                                data.cell.styles.lineWidth = { top: 0.1, right: 0, bottom: 0.1, left: 0.1 }
                             } else {
-                                if (isHoliday) {
-                                    data.cell.styles.fillColor = [185, 28, 28] // Holiday Red
-                                } else {
-                                    data.cell.styles.fillColor = [0, 0, 0] // Black
-                                }
-                                data.cell.styles.textColor = [255, 255, 255]
-                                data.cell.styles.fontStyle = 'bold'
-                            }
-                        }
-                        // Day Name Row (Row 1)
-                        if (rowIndex === 1) {
-                            if (colIndex > 0) {
-                                if (isHoliday) {
-                                    data.cell.styles.fillColor = [185, 28, 28] // Holiday Red
-                                } else {
-                                    data.cell.styles.fillColor = [0, 0, 0] // Black
-                                }
-                                data.cell.styles.textColor = [255, 255, 255]
-                                data.cell.styles.fontStyle = 'bold'
-                            } else {
-                                data.cell.styles.fillColor = [255, 255, 255]
+                                data.cell.styles.lineWidth = { top: 0.1, right: 0.1, bottom: 0.1, left: 0 }
                             }
                         }
                     }
-
-                    // --- Body Styling ---
-                    if (section === 'body') {
-                        // MOD & SMOD Rows (Row 0 and 1)
-                        if (rowIndex === 0 || rowIndex === 1) {
-                            data.cell.styles.fillColor = [204, 204, 204] // Light Grey
-                            if (colIndex === 0) data.cell.styles.fontStyle = 'bold'
-                        }
-
-                        // Section Headers
-                        const CATEGORY_HEADERS = ['Management (MOD)', 'Shift Manager (SMOD)', 'Cafe', 'Shop', 'Front Desk']
-                        const MAIN_HEADERS = ['Full Time & Cafe', 'Part Time']
-
-                        if (MAIN_HEADERS.includes(rawRow[0])) {
-                            data.cell.styles.fillColor = [51, 51, 51] // Dark Grey
-                            data.cell.styles.textColor = [255, 255, 255]
-                            data.cell.styles.fontStyle = 'bold'
-                            if (colIndex === 0) {
-                                data.cell.colSpan = 8
-                            }
-                        } else if (CATEGORY_HEADERS.includes(rawRow[0])) {
-                            data.cell.styles.fillColor = [102, 102, 102] // Medium Grey
-                            data.cell.styles.textColor = [255, 255, 255]
-                            data.cell.styles.fontStyle = 'bold'
-                            if (colIndex === 0) {
-                                data.cell.colSpan = 8
-                            }
-                        }
-
-                        // User Rows
-                        const isUserRow = rowIndex > 0 && !CATEGORY_HEADERS.includes(rawRow[0]) && !MAIN_HEADERS.includes(rawRow[0])
-
-                        if (isUserRow) {
-                            // Name Column
-                            if (colIndex === 0) {
-                                data.cell.styles.fillColor = [221, 221, 221] // Very Light Grey
-                                data.cell.styles.fontStyle = 'bold'
-                            }
-                            // Shift Columns
-                            else if (date) {
-                                const dateStr = format(date, 'yyyy-MM-dd')
-                                const userName = rawRow[0]
-                                const user = users.find(u => u.name === userName)
-
-                                if (user) {
-                                    const onLeave = (leaves as LeaveRangeItem[]).some((leave) => leave.userId === user.id && leave.startDate <= dateStr && leave.endDate >= dateStr)
-                                    const shift = shifts.find(s => s.user_id === user.id && s.date === dateStr)
-
-                                    if (onLeave) {
-                                        data.cell.styles.fillColor = [0, 0, 0] // Black
-                                        data.cell.styles.textColor = [255, 255, 255]
-                                        // Text is already set in body construction
-                                    } else if (shift && shift.department.color_code) {
-                                        const hex = shift.department.color_code.replace('#', '')
-                                        const r = parseInt(hex.substring(0, 2), 16)
-                                        const g = parseInt(hex.substring(2, 4), 16)
-                                        const b = parseInt(hex.substring(4, 6), 16)
-                                        data.cell.styles.fillColor = [r, g, b]
-                                        data.cell.styles.textColor = [255, 255, 255]
-                                    } else if (isHoliday) {
-                                        data.cell.styles.fillColor = [254, 242, 242] // Lighter red
-                                    } else if (!isSameMonth(date, monthDate)) {
-                                        data.cell.styles.fillColor = [238, 238, 238]
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            })
-
-            finalY = (doc as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY
-                ? ((doc as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? finalY) + 10
-                : finalY + 10
+                })
             })
 
             doc.save(`roster-${currentMonth}-enhanced.pdf`)
@@ -340,7 +388,7 @@ export default function EnhancedPdfButton({
             onClick={handleExport}
             className="btn btn-secondary"
             disabled={isExporting}
-            style={{ marginLeft: '10px', backgroundColor: '#b30b00', color: 'white' }} // PDF Red
+            style={{ marginLeft: '10px', backgroundColor: '#b30b00', color: 'white' }}
         >
             {isExporting ? 'Exporting PDF...' : 'Export PDF (Enhanced)'}
         </button>

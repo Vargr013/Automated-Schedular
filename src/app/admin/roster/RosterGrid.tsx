@@ -56,6 +56,17 @@ type Leave = {
     status: string
 }
 
+type RosterWarning = {
+    type: 'LEAVE_CONFLICT' | 'UNDERSTAFFED'
+    date: string
+    message: string
+    shiftId?: number
+    userId?: number
+    departmentId?: number
+    startTime?: string
+    endTime?: string
+}
+
 type EditorState = {
     mode: 'create' | 'edit'
     shiftId?: number
@@ -116,7 +127,7 @@ export default function RosterGrid({
     departments: Department[]
     shifts: Shift[]
     operatingDays: OperatingDay[]
-    violations?: { shiftId?: number, message: string }[]
+    violations?: RosterWarning[]
     leaves?: Leave[]
     startDate: string
     endDate: string
@@ -179,7 +190,7 @@ export default function RosterGrid({
     }, [daysInMonth, leaves])
 
     const violationsByShiftId = useMemo(() => {
-        const map = new Map<number, { shiftId?: number, message: string }[]>()
+        const map = new Map<number, RosterWarning[]>()
         for (const violation of violations) {
             if (!violation.shiftId) continue
             const current = map.get(violation.shiftId)
@@ -187,6 +198,19 @@ export default function RosterGrid({
                 current.push(violation)
             } else {
                 map.set(violation.shiftId, [violation])
+            }
+        }
+        return map
+    }, [violations])
+
+    const violationsByDate = useMemo(() => {
+        const map = new Map<string, RosterWarning[]>()
+        for (const violation of violations) {
+            const current = map.get(violation.date)
+            if (current) {
+                current.push(violation)
+            } else {
+                map.set(violation.date, [violation])
             }
         }
         return map
@@ -244,6 +268,14 @@ export default function RosterGrid({
             })
         return counts
     }, [daysInMonth, leaves])
+
+    const alertCountPerDay = useMemo(() => {
+        const counts: Record<string, number> = {}
+        for (const [date, dayViolations] of violationsByDate.entries()) {
+            counts[date] = dayViolations.filter((violation) => violation.type === 'UNDERSTAFFED').length
+        }
+        return counts
+    }, [violationsByDate])
 
     const groupedUsers = useMemo(() => {
         const groups: Record<string, Record<string, User[]>> = {
@@ -1261,6 +1293,8 @@ export default function RosterGrid({
                                     const isClosed = status?.status === 'CLOSED'
                                     const isWeekend = day.getDay() === 0 || day.getDay() === 6
                                     const isToday = isSameDay(day, new Date())
+                                    const dayViolations = (violationsByDate.get(dateStr) || []).filter((violation) => violation.type === 'UNDERSTAFFED')
+                                    const dayViolationMessages = dayViolations.map((violation) => violation.message).join('\n')
 
                                     return (
                                         <th
@@ -1292,6 +1326,27 @@ export default function RosterGrid({
                                                 {shiftsPerDay[dateStr] || 0} shifts
                                                 {approvedLeavePerDay[dateStr] ? ` | ${approvedLeavePerDay[dateStr]} leave` : ''}
                                             </div>
+                                            {alertCountPerDay[dateStr] ? (
+                                                <div
+                                                    title={dayViolationMessages}
+                                                    style={{
+                                                        marginTop: '0.35rem',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '0.3rem',
+                                                        padding: '0.2rem 0.45rem',
+                                                        borderRadius: '999px',
+                                                        backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                                                        color: '#b45309',
+                                                        fontSize: '0.68rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'help'
+                                                    }}
+                                                >
+                                                    <AlertCircle size={11} />
+                                                    {alertCountPerDay[dateStr]} staffing gap{alertCountPerDay[dateStr] === 1 ? '' : 's'}
+                                                </div>
+                                            ) : null}
                                             {status?.event_note && <div style={{ fontSize: '0.65rem', marginTop: '2px', fontWeight: '500' }}>{status.event_note}</div>}
                                         </th>
                                     )

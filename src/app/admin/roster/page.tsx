@@ -2,7 +2,7 @@ import { getUsers } from '@/app/actions/users'
 import { getDepartments } from '@/app/actions/departments'
 import { getShifts } from '@/app/actions/shifts'
 import { getOperatingDaysForRange } from '@/app/actions/calendar'
-import { validateMonth } from '@/app/actions/constraints'
+import { validateMonth, type RosterWarning } from '@/app/actions/constraints'
 import { getLeavesForMonth } from '@/app/actions/scheduler'
 import RosterGrid from './RosterGrid'
 import MonthSelector from './MonthSelector'
@@ -42,6 +42,7 @@ export default async function RosterPage({
     const openDays = operatingDays.filter((day) => day.status === 'OPEN').length
     const closedDays = operatingDays.filter((day) => day.status === 'CLOSED').length
     const holidayDays = operatingDays.filter((day) => day.status === 'HOLIDAY').length
+    const rosterWarnings = violations as RosterWarning[]
 
     return (
         <div style={{ height: 'calc(100vh - 40px)', display: 'flex', flexDirection: 'column' }}>
@@ -80,9 +81,9 @@ export default async function RosterPage({
                         <div className="roster-summary-note">Leave requests already affecting availability.</div>
                     </div>
                     <div className="roster-summary-card">
-                        <div className="roster-summary-label">Warnings</div>
-                        <div className="roster-summary-value">{violations.length}</div>
-                        <div className="roster-summary-note">Rule warnings currently visible on the roster.</div>
+                        <div className="roster-summary-label">Roster Alerts</div>
+                        <div className="roster-summary-value">{rosterWarnings.length}</div>
+                        <div className="roster-summary-note">Leave conflicts and staffing gaps currently visible on the roster.</div>
                     </div>
                 </div>
 
@@ -106,7 +107,7 @@ export default async function RosterPage({
                 departments={departments}
                 shifts={shifts}
                 operatingDays={operatingDays}
-                violations={violations}
+                violations={rosterWarnings}
                 leaves={leaves}
                 startDate={startDate}
                 endDate={endDate}

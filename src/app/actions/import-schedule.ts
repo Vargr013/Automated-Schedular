@@ -3,8 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import ExcelJS from 'exceljs'
-import { format, parseISO, eachDayOfInterval, getDay } from 'date-fns'
+import { format, parseISO, getDay } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
+import { DAY_COLUMN_START, DAY_PAIR_WIDTH, WEEK_COLUMN_COUNT } from '@/app/admin/roster/export-layout'
 
 // --- Types ---
 
@@ -63,6 +64,27 @@ function parseTimeRange(text: string): { start: string, end: string } | null {
         start: pad(parts[0]),
         end: pad(parts[1])
     }
+}
+
+function parseSingleTime(text: string): string | null {
+    const clean = text.trim()
+    if (!/^\d{1,2}:\d{2}$/.test(clean)) return null
+    return clean.length === 4 ? `0${clean}` : clean
+}
+
+function cellText(cellValue: ExcelJS.CellValue | undefined | null): string {
+    if (cellValue === null || cellValue === undefined) return ''
+    if (typeof cellValue === 'string') return cellValue
+    if (typeof cellValue === 'number') return cellValue.toString()
+    if (cellValue instanceof Date) return format(cellValue, 'HH:mm')
+    if (typeof cellValue === 'object' && 'text' in cellValue && typeof cellValue.text === 'string') {
+        return cellValue.text
+    }
+    return String(cellValue)
+}
+
+function looksLikeExportDate(text: string): boolean {
+    return /^\d{1,2}-[A-Za-z]{3}$/.test(text.trim())
 }
 
 // --- Main Action ---
@@ -154,65 +176,38 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
             const cell2 = row.getCell(2)
             const val2 = cell2.value
 
-            // CHECK: Is this a Date Row?
-            // "Part Time" in col 1 AND "d-MMM" in col 2 check (or just heuristic)
-            // Export structure: Col 1 = "Part Time" (or similar label), Col 2 = Date
-            // CHECK: Is this a Date Row?
-            // "Part Time" in col 1 AND "d-MMM" in col 2.
-            // CAUTION: There is also a "Part Time" SECTION HEADER which has "Part Time" in col 1 but is merged.
-            // We must ensure Col 2 has a value that looks like a date to distinguish.
-            const isDateRow = (val1 === 'Part Time' || val1 === 'Full Time & Cafe') && val2 && val2.toString().includes('-')
+            const detectedDateCols = new Map<number, string>()
+            for (let colNumber = DAY_COLUMN_START; colNumber <= WEEK_COLUMN_COUNT; colNumber += DAY_PAIR_WIDTH) {
+                const cell = row.getCell(colNumber)
+                const text = cellText(cell.value).trim()
+                const cellVal = cell.value
 
-            if (isDateRow) {
-                // New Week Block Detected
-                currentDateColMap.clear()
+                if (!text && !(cellVal instanceof Date)) continue
 
-                row.eachCell((cell, colNumber) => {
-                    if (colNumber < 2) return
-                    const cellVal = cell.value
-                    if (cellVal) {
-                        const text = cellVal.toString() // "8-Dec"
-                        // Try parsing with MonthStr year
-                        const [day, monthShort] = text.split('-')
-                        if (day && monthShort) {
-                            // Determine year.
-                            // If monthStr is "2025-12", and we see "Jan", it might be 2026.
-                            // If monthStr is "2026-01", and we see "Dec", it might be 2025.
-                            // Since the roster usually exports a single month + adjacent days, we can infer.
-                            // Safety: try the year of monthStr first.
-                            const baseYear = parseInt(monthStr.split('-')[0])
+                if (looksLikeExportDate(text)) {
+                    const [day, monthShort] = text.split('-')
+                    const baseYear = parseInt(monthStr.split('-')[0])
+                    const parsed = new Date(`${day} ${monthShort} ${baseYear}`)
 
-                            // Naive approach: Parse with baseYear. Check if it makes sense?
-                            // Or utilize the date-fns logic?
-                            // Let's assume the string "d-MMM" + baseYear
-                            // If standard Date.parse works:
-                            const parsed = new Date(`${day} ${monthShort} ${baseYear}`)
+                    if (!isNaN(parsed.getTime())) {
+                        const rosterMonthIndex = parseInt(monthStr.split('-')[1]) - 1
+                        const parsedMonthIndex = parsed.getMonth()
 
-                            // Calendar Wraparound check?
-                            // If we are in Dec 2025, and see "Jan", it should be 2026.
-                            // If we are in Jan 2026, and see "Dec", it should be 2025.
-                            // BUT: The export actually writes `format(day, 'd-MMM')`.
-                            // Let's rely on standard JS date parsing which defaults to current year usually? No, we provided year.
+                        let finalYear = baseYear
+                        if (rosterMonthIndex === 11 && parsedMonthIndex === 0) finalYear++
+                        if (rosterMonthIndex === 0 && parsedMonthIndex === 11) finalYear--
 
-                            if (!isNaN(parsed.getTime())) {
-                                // Logic to fix Year edge cases
-                                const rosterMonthIndex = parseInt(monthStr.split('-')[1]) - 1 // 0-11
-                                const parsedMonthIndex = parsed.getMonth()
-
-                                let finalYear = baseYear
-                                if (rosterMonthIndex === 11 && parsedMonthIndex === 0) finalYear++ // Dec -> Jan
-                                if (rosterMonthIndex === 0 && parsedMonthIndex === 11) finalYear-- // Jan -> Dec
-
-                                parsed.setFullYear(finalYear) // Correct the year
-
-                                currentDateColMap.set(colNumber, format(parsed, 'yyyy-MM-dd'))
-                            }
-                        } else if (cellVal instanceof Date) {
-                            currentDateColMap.set(colNumber, format(cellVal, 'yyyy-MM-dd'))
-                        }
+                        parsed.setFullYear(finalYear)
+                        detectedDateCols.set(colNumber, format(parsed, 'yyyy-MM-dd'))
                     }
-                })
-                return // Done processing Date Row
+                } else if (cellVal instanceof Date) {
+                    detectedDateCols.set(colNumber, format(cellVal, 'yyyy-MM-dd'))
+                }
+            }
+
+            if (detectedDateCols.size >= 5) {
+                currentDateColMap = detectedDateCols
+                return
             }
 
             // Skip Day Name Row (Mon, Tue...) or Header/Spacer rows
@@ -222,31 +217,49 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
             if (user) {
                 foundUserIds.add(user.id)
                 // Use CURRENT date map
-                currentDateColMap.forEach((dateStr, colIdx) => {
-                    const cell = row.getCell(colIdx)
-                    if (cell.value) {
-                        const cellText = cell.value.toString()
-                        const timeRange = parseTimeRange(cellText)
+                currentDateColMap.forEach((dateStr, startColIdx) => {
+                    const startCell = row.getCell(startColIdx)
+                    const endCell = row.getCell(startColIdx + 1)
 
-                        if (timeRange) {
-                            // Correct Color Lookup
-                            let deptId = user.skills[0]?.department_id || departments[0].id
+                    const startText = cellText(startCell.value)
+                    const endText = cellText(endCell.value)
+                    const pairedStart = parseSingleTime(startText)
+                    const pairedEnd = parseSingleTime(endText)
+                    const combinedRange = parseTimeRange(startText)
 
-                            const fill = cell.fill as ExcelJS.FillPattern
+                    let parsedStart: string | null = null
+                    let parsedEnd: string | null = null
+
+                    if (pairedStart && pairedEnd) {
+                        parsedStart = pairedStart
+                        parsedEnd = pairedEnd
+                    } else if (combinedRange) {
+                        parsedStart = combinedRange.start
+                        parsedEnd = combinedRange.end
+                    }
+
+                    if (parsedStart && parsedEnd) {
+                        let deptId = user.skills[0]?.department_id || departments[0].id
+
+                        const candidateCells = [startCell, endCell]
+                        for (const candidateCell of candidateCells) {
+                            const fill = candidateCell.fill as ExcelJS.FillPattern
                             if (fill && fill.type === 'pattern' && fill.fgColor && fill.fgColor.argb) {
-                                const argb = fill.fgColor.argb
-                                const mappedId = colorMap.get(normalizeColor(argb))
-                                if (mappedId) deptId = mappedId
+                                const mappedId = colorMap.get(normalizeColor(fill.fgColor.argb))
+                                if (mappedId) {
+                                    deptId = mappedId
+                                    break
+                                }
                             }
-
-                            scannedShifts.push({
-                                userId: user.id,
-                                date: dateStr,
-                                startTime: timeRange.start,
-                                endTime: timeRange.end,
-                                departmentId: deptId
-                            })
                         }
+
+                        scannedShifts.push({
+                            userId: user.id,
+                            date: dateStr,
+                            startTime: parsedStart,
+                            endTime: parsedEnd,
+                            departmentId: deptId
+                        })
                     }
                 })
             }
