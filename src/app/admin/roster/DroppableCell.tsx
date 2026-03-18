@@ -1,5 +1,6 @@
 'use client'
 
+import { useSyncExternalStore } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 
 export default function DroppableCell({
@@ -21,6 +22,12 @@ export default function DroppableCell({
     isToday?: boolean,
     isSelected?: boolean
 }) {
+    const isMounted = useSyncExternalStore(
+        () => () => {},
+        () => true,
+        () => false
+    )
+
     const { isOver, setNodeRef } = useDroppable({
         id: `${userId}|${date}`,
         data: {
@@ -52,6 +59,10 @@ export default function DroppableCell({
             : isToday
                 ? 'inset 0 0 0 1px rgba(var(--primary-rgb), 0.35)'
                 : 'none'
+    }
+
+    if (!isMounted) {
+        return <div style={style}>{children}</div>
     }
 
     return (

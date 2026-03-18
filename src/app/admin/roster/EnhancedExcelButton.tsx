@@ -1,20 +1,17 @@
 'use client'
 
-import { format, parseISO, eachDayOfInterval, subMonths } from 'date-fns'
-import { getMonthRosterRange } from '@/lib/date-utils'
-import { getMultiplier } from '@/lib/holidays'
-import { getShifts } from '@/app/actions/shifts'
-import { getLeavesForRange } from '@/app/actions/scheduler'
 import { useState } from 'react'
+import { format } from 'date-fns'
+import { getLeavesForRange } from '@/app/actions/scheduler'
+import { getMonthRosterRange } from '@/lib/date-utils'
 import {
     buildRosterExportModel,
     getContrastTextColor,
     getDayPairColumns,
-    WEEK_COLUMN_COUNT,
     type ExportLeave,
     type ExportShift,
     type ExportUser,
-    type WeekSection,
+    type WeekBlock,
     type WeekUserRow
 } from './export-layout'
 
@@ -23,6 +20,338 @@ type User = ExportUser & {
 }
 
 type Shift = ExportShift
+
+type TemplateWeekBlock = {
+    startRow: number
+    endRow: number
+    dateRow: number
+    introRow: number
+    dayRow: number
+    modRow: number
+    smodRow: number
+    fullTimeHeaderRow: number
+    partTimeHeaderRow: number
+    fullTimeNames: string[]
+    partTimeNames: string[]
+}
+
+const TEMPLATE_URL = '/roster-template.xlsx'
+const TOTAL_COLUMN = 16
+const WEEKDAY_NAMES = new Set([
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday'
+])
+
+const COLUMN_WIDTHS = [11, 8.8, 8.8, 8.8, 8.8, 8.8, 8.8, 8.8, 8.8, 8.8, 8.8, 8.8, 8.8, 8.8, 8.8, 7]
+const DEFAULT_ROW_HEIGHT = 16.5
+const BLACK = 'FF000000'
+const WHITE = 'FFFFFFFF'
+const LEAVE_FILL = 'FF000000'
+const SHIFT_FONT = { name: 'Calibri', size: 11, bold: true, family: 2 }
+const NAME_FONT = { name: 'Aptos Narrow', size: 11, bold: true, family: 2 }
+
+function cloneStyle<T>(value: T): T {
+    if (!value) return value
+    return JSON.parse(JSON.stringify(value))
+}
+
+function cellText(cell: any) {
+    if (!cell) return ''
+    const value = cell.value
+    if (value === null || value === undefined) return ''
+    if (typeof value === 'string') return value.trim()
+    if (typeof value === 'number') return value.toString()
+    if (value instanceof Date) return format(value, 'd-MMM')
+    if (typeof value === 'object' && 'text' in value && typeof value.text === 'string') return value.text.trim()
+    return String(value).trim()
+}
+
+function isWeekdayName(value: string) {
+    return WEEKDAY_NAMES.has(value)
+}
+
+function isDateCell(cell: any) {
+    if (!cell) return false
+    return cell.value instanceof Date || /^\d{1,2}-[A-Za-z]{3}$/.test(cellText(cell))
+}
+
+function isMergedChildCell(cell: any) {
+    return Boolean(cell?.isMerged && cell?.master && cell.master.address !== cell.address)
+}
+
+function getTemplateBlocks(worksheet: any): TemplateWeekBlock[] {
+    const starts: number[] = []
+
+    for (let rowNumber = 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+        if (cellText(worksheet.getCell(rowNumber, 1)) === 'Part Time') {
+            starts.push(rowNumber)
+        }
+    }
+
+    starts.push(worksheet.rowCount + 1)
+
+    return starts.slice(0, -1).map((startRow, index) => {
+        const endRow = starts[index + 1] - 1
+        let dateRow = 0
+        let dayRow = 0
+        let modRow = 0
+        let smodRow = 0
+        let fullTimeHeaderRow = 0
+        let explicitPartTimeHeaderRow = 0
+
+        for (let rowNumber = startRow; rowNumber <= endRow; rowNumber += 1) {
+            const label = cellText(worksheet.getCell(rowNumber, 1))
+            const secondCell = worksheet.getCell(rowNumber, 2)
+            const secondValue = cellText(secondCell)
+
+            if (!dateRow && isDateCell(secondCell)) dateRow = rowNumber
+            if (!dayRow && isWeekdayName(secondValue)) dayRow = rowNumber
+            if (label === 'MOD') modRow = rowNumber
+            if (label === 'SMOD') smodRow = rowNumber
+            if (label === 'Full time & Cafe') fullTimeHeaderRow = rowNumber
+            if (label === 'Part time') explicitPartTimeHeaderRow = rowNumber
+        }
+
+        if (!dateRow && dayRow) {
+            dateRow = Math.max(startRow + 1, dayRow - 3)
+        }
+
+        const fullTimeNames: string[] = []
+        let cursor = fullTimeHeaderRow + 1
+        while (cursor <= endRow) {
+            const label = cellText(worksheet.getCell(cursor, 1))
+            if (!label || ['Part Time', 'Part time', 'Full time & Cafe', 'MOD', 'SMOD'].includes(label)) break
+            fullTimeNames.push(label)
+            cursor += 1
+        }
+
+        const partTimeHeaderRow = explicitPartTimeHeaderRow || cursor
+        const partTimeNames: string[] = []
+        for (let rowNumber = partTimeHeaderRow + 1; rowNumber <= endRow; rowNumber += 1) {
+            const label = cellText(worksheet.getCell(rowNumber, 1))
+            if (label && !['Part Time', 'Part time', 'Full time & Cafe', 'MOD', 'SMOD'].includes(label)) {
+                partTimeNames.push(label)
+            }
+        }
+
+        return {
+            startRow,
+            endRow,
+            dateRow,
+            introRow: Math.max(dateRow + 2, dayRow - 1),
+            dayRow,
+            modRow,
+            smodRow,
+            fullTimeHeaderRow,
+            partTimeHeaderRow,
+            fullTimeNames,
+            partTimeNames
+        }
+    })
+}
+
+function copyTemplateLayout(templateSheet: any, worksheet: any) {
+    for (let columnNumber = 1; columnNumber <= TOTAL_COLUMN; columnNumber += 1) {
+        worksheet.getColumn(columnNumber).width = COLUMN_WIDTHS[columnNumber - 1]
+    }
+
+    for (let rowNumber = 1; rowNumber <= templateSheet.rowCount; rowNumber += 1) {
+        const templateRow = templateSheet.getRow(rowNumber)
+        const row = worksheet.getRow(rowNumber)
+        row.height = templateRow.height || DEFAULT_ROW_HEIGHT
+        row.hidden = false
+    }
+
+    for (let rowNumber = 1; rowNumber <= templateSheet.rowCount; rowNumber += 1) {
+        for (let columnNumber = 1; columnNumber <= TOTAL_COLUMN; columnNumber += 1) {
+            const templateCell = templateSheet.getCell(rowNumber, columnNumber)
+            const cell = worksheet.getCell(rowNumber, columnNumber)
+            cell.style = cloneStyle(templateCell.style || {})
+        }
+    }
+
+    const merges = templateSheet.model.merges || []
+    for (const merge of merges) {
+        worksheet.mergeCells(merge)
+    }
+}
+
+function resetCellFromTemplate(templateSheet: any, worksheet: any, rowNumber: number, columnNumber: number) {
+    const templateCell = templateSheet.getCell(rowNumber, columnNumber)
+    const cell = worksheet.getCell(rowNumber, columnNumber)
+
+    cell.value = null
+    cell.style = cloneStyle(templateCell.style || {})
+}
+
+function resetPairFromTemplate(templateSheet: any, worksheet: any, rowNumber: number, dayIndex: number) {
+    const { startColumn, endColumn } = getDayPairColumns(dayIndex)
+    resetCellFromTemplate(templateSheet, worksheet, rowNumber, startColumn)
+    resetCellFromTemplate(templateSheet, worksheet, rowNumber, endColumn)
+}
+
+function setPairTextAlignment(worksheet: any, rowNumber: number, dayIndex: number) {
+    const { startColumn, endColumn } = getDayPairColumns(dayIndex)
+    worksheet.getCell(rowNumber, startColumn).alignment = { horizontal: 'center', vertical: 'middle' }
+    worksheet.getCell(rowNumber, endColumn).alignment = { horizontal: 'center', vertical: 'middle' }
+}
+
+function writeDateRow(worksheet: any, rowNumber: number, days: Date[]) {
+    days.forEach((day, dayIndex) => {
+        const { startColumn, endColumn } = getDayPairColumns(dayIndex)
+        try {
+            worksheet.unMergeCells(rowNumber, startColumn, rowNumber, endColumn)
+        } catch {}
+        worksheet.mergeCells(rowNumber, startColumn, rowNumber, endColumn)
+
+        const cell = worksheet.getCell(rowNumber, startColumn)
+        cell.value = format(day, 'dd-MMM')
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+    })
+}
+
+function writeDayRow(worksheet: any, rowNumber: number, days: Date[]) {
+    days.forEach((day, dayIndex) => {
+        const { startColumn } = getDayPairColumns(dayIndex)
+        const cell = worksheet.getCell(rowNumber, startColumn)
+        cell.value = format(day, 'EEEE')
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+    })
+}
+
+function writeSummaryRow(worksheet: any, rowNumber: number, values: string[]) {
+    values.forEach((value, dayIndex) => {
+        const { startColumn } = getDayPairColumns(dayIndex)
+        const cell = worksheet.getCell(rowNumber, startColumn)
+        cell.value = value || null
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+    })
+}
+
+function writeIntroRow(templateSheet: any, worksheet: any, rowNumber: number, values: string[]) {
+    for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+        resetPairFromTemplate(templateSheet, worksheet, rowNumber, dayIndex)
+
+        const { startColumn, endColumn } = getDayPairColumns(dayIndex)
+        const introName = values[dayIndex]
+
+        if (!introName) continue
+
+        const startCell = worksheet.getCell(rowNumber, startColumn)
+        const endCell = worksheet.getCell(rowNumber, endColumn)
+        startCell.value = 'Intro'
+        endCell.value = introName
+        startCell.alignment = { horizontal: 'left', vertical: 'middle' }
+        endCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    }
+}
+
+function applyShiftPair(worksheet: any, rowNumber: number, dayIndex: number, dayCell: WeekUserRow['dayCells'][number]) {
+    const { startColumn, endColumn } = getDayPairColumns(dayIndex)
+    const startCell = worksheet.getCell(rowNumber, startColumn)
+    const endCell = worksheet.getCell(rowNumber, endColumn)
+
+    if (dayCell.onLeave) {
+        startCell.value = dayCell.startTime || 'LEAVE'
+        endCell.value = dayCell.endTime || null
+        startCell.numFmt = '@'
+        endCell.numFmt = '@'
+        startCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LEAVE_FILL }, bgColor: { argb: LEAVE_FILL } }
+        endCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LEAVE_FILL }, bgColor: { argb: LEAVE_FILL } }
+        startCell.font = { ...SHIFT_FONT, color: { argb: WHITE } }
+        endCell.font = { ...SHIFT_FONT, color: { argb: WHITE } }
+        setPairTextAlignment(worksheet, rowNumber, dayIndex)
+        return
+    }
+
+    if (!dayCell.startTime || !dayCell.endTime || !dayCell.departmentColor) {
+        return
+    }
+
+    const fillArgb = `FF${dayCell.departmentColor.replace('#', '').toUpperCase()}`
+    const textArgb = getContrastTextColor(dayCell.departmentColor) === 'FFFFFF' ? WHITE : BLACK
+
+    startCell.value = dayCell.startTime
+    endCell.value = dayCell.endTime
+    startCell.numFmt = '@'
+    endCell.numFmt = '@'
+    startCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillArgb }, bgColor: { argb: fillArgb } }
+    endCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillArgb }, bgColor: { argb: fillArgb } }
+    startCell.font = { ...SHIFT_FONT, color: { argb: textArgb } }
+    endCell.font = { ...SHIFT_FONT, color: { argb: textArgb } }
+    setPairTextAlignment(worksheet, rowNumber, dayIndex)
+}
+
+function getShiftHours(startTime: string, endTime: string) {
+    const [startHour, startMinute] = startTime.split(':').map(Number)
+    const [endHour, endMinute] = endTime.split(':').map(Number)
+    let diffMinutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute)
+    if (diffMinutes <= 0) diffMinutes += 24 * 60
+    return diffMinutes / 60
+}
+
+function getTotalHours(row: WeekUserRow, isPartTime: boolean) {
+    return row.dayCells.reduce((sum, dayCell, dayIndex) => {
+        if (!dayCell.startTime || !dayCell.endTime) return sum
+        const multiplier = isPartTime && dayIndex === 6 ? 1.5 : 1
+        return sum + (getShiftHours(dayCell.startTime, dayCell.endTime) * multiplier)
+    }, 0)
+}
+
+function buildWeekRowMap(week: WeekBlock, key: 'fullTimeSections' | 'partTimeSections') {
+    return new Map(
+        week[key]
+            .flatMap((section) => section.rows)
+            .map((row) => [row.user.name.toLowerCase(), row])
+    )
+}
+
+function writeNamedRows({
+    templateSheet,
+    worksheet,
+    rowStart,
+    names,
+    rowMap,
+    isPartTime
+}: {
+    templateSheet: any
+    worksheet: any
+    rowStart: number
+    names: string[]
+    rowMap: Map<string, WeekUserRow>
+    isPartTime: boolean
+}) {
+    names.forEach((name, index) => {
+        const rowNumber = rowStart + index
+        worksheet.getCell(rowNumber, 1).value = name
+        worksheet.getCell(rowNumber, 1).font = cloneStyle(worksheet.getCell(rowNumber, 1).font || NAME_FONT)
+
+        const rosterRow = rowMap.get(name.toLowerCase())
+
+        for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+            resetPairFromTemplate(templateSheet, worksheet, rowNumber, dayIndex)
+            const dayCell = rosterRow?.dayCells[dayIndex]
+            if (dayCell) {
+                applyShiftPair(worksheet, rowNumber, dayIndex, dayCell)
+            }
+        }
+
+        const totalCell = worksheet.getCell(rowNumber, TOTAL_COLUMN)
+        totalCell.value = rosterRow ? getTotalHours(rosterRow, isPartTime) : null
+        totalCell.numFmt = '0.00'
+    })
+}
+
+function hideUnusedRows(worksheet: any, startRow: number, endRow: number) {
+    for (let rowNumber = startRow; rowNumber <= endRow; rowNumber += 1) {
+        worksheet.getRow(rowNumber).hidden = true
+    }
+}
 
 export default function EnhancedExcelButton({
     users,
@@ -44,68 +373,22 @@ export default function EnhancedExcelButton({
                 import('file-saver')
             ])
 
+            const templateResponse = await fetch(TEMPLATE_URL, { cache: 'no-store' })
+            if (!templateResponse.ok) {
+                throw new Error('Failed to load the Excel template workbook.')
+            }
+
+            const templateWorkbook = new ExcelJS.Workbook()
+            await templateWorkbook.xlsx.load(await templateResponse.arrayBuffer())
+            const templateSheet = templateWorkbook.worksheets[0]
+            const templateBlocks = getTemplateBlocks(templateSheet)
+
             const workbook = new ExcelJS.Workbook()
-
-            const currentMonthDate = parseISO(`${currentMonth}-01`)
-            const prevMonthDate = subMonths(currentMonthDate, 1)
-            const payrollStart = format(prevMonthDate, 'yyyy-MM-22')
-            const payrollEnd = format(currentMonthDate, 'yyyy-MM-21')
-
-            const payrollShifts = await getShifts(payrollStart, payrollEnd)
-            const payrollLeaves = await getLeavesForRange(payrollStart, payrollEnd)
-
-            const payrollSheet = workbook.addWorksheet('Payroll')
-            payrollSheet.columns = [
-                { header: 'Name', key: 'name', width: 20 },
-                { header: 'Type', key: 'type', width: 15 },
-                { header: 'Category', key: 'category', width: 15 },
-                { header: 'Total Hours', key: 'hours', width: 15 }
-            ]
-            payrollSheet.getRow(1).font = { bold: true }
-
-            const payrollRangeDays = eachDayOfInterval({
-                start: parseISO(payrollStart),
-                end: parseISO(payrollEnd)
+            const worksheet = workbook.addWorksheet('Roster', {
+                views: [{ showGridLines: false }]
             })
+            copyTemplateLayout(templateSheet, worksheet)
 
-            const getHours = (start: string, end: string) => {
-                const [h1, m1] = start.split(':').map(Number)
-                const [h2, m2] = end.split(':').map(Number)
-                const diff = (h2 + m2 / 60) - (h1 + m1 / 60)
-                return diff > 0 ? diff : diff + 24
-            }
-
-            for (const user of users) {
-                let totalHours = 0
-
-                for (const day of payrollRangeDays) {
-                    const dateStr = format(day, 'yyyy-MM-dd')
-                    const shift = payrollShifts.find((item) => item.user_id === user.id && item.date === dateStr)
-                    const onLeave = payrollLeaves.some((leave) =>
-                        leave.userId === user.id &&
-                        leave.startDate <= dateStr &&
-                        leave.endDate >= dateStr
-                    )
-
-                    if (!shift) continue
-
-                    const duration = getHours(shift.start_time, shift.end_time)
-                    if (user.type !== 'FULL_TIME' && onLeave) continue
-
-                    totalHours += duration * (onLeave ? 1 : getMultiplier(dateStr))
-                }
-
-                if (totalHours > 0 || user.type === 'FULL_TIME') {
-                    payrollSheet.addRow({
-                        name: user.name,
-                        type: user.type,
-                        category: user.category,
-                        hours: totalHours.toFixed(2)
-                    })
-                }
-            }
-
-            const worksheet = workbook.addWorksheet('Roster')
             const { start, end } = getMonthRosterRange(currentMonth)
             const rosterLeaves = await getLeavesForRange(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'))
             const model = buildRosterExportModel({
@@ -115,222 +398,59 @@ export default function EnhancedExcelButton({
                 currentMonth
             })
 
-            const borderStyle = {
-                top: { style: 'thin' },
-                left: { style: 'thin' },
-                bottom: { style: 'thin' },
-                right: { style: 'thin' }
-            } as const
+            templateBlocks.forEach((block, index) => {
+                const week = model.weeks[index]
 
-            const getPairedTimeBorder = (position: 'start' | 'end') => ({
-                top: { style: 'thin' },
-                bottom: { style: 'thin' },
-                left: { style: 'thin' },
-                right: position === 'start' ? undefined : { style: 'thin' }
+                if (!week) {
+                    hideUnusedRows(worksheet, block.startRow, block.endRow)
+                    return
+                }
+
+                worksheet.getRow(block.startRow).hidden = false
+                worksheet.getCell(block.startRow, 1).value = 'Part Time'
+
+                writeDateRow(worksheet, block.dateRow, week.days)
+                writeIntroRow(templateSheet, worksheet, block.introRow, week.introNames)
+                writeDayRow(worksheet, block.dayRow, week.days)
+                writeSummaryRow(worksheet, block.modRow, week.modNames)
+                writeSummaryRow(worksheet, block.smodRow, week.smodNames)
+
+                worksheet.getCell(block.modRow, 1).value = 'MOD'
+                worksheet.getCell(block.smodRow, 1).value = 'SMOD'
+                worksheet.getCell(block.modRow, TOTAL_COLUMN).value = 'Total'
+                worksheet.getCell(block.fullTimeHeaderRow, 1).value = 'Full time & Cafe'
+                worksheet.getCell(block.fullTimeHeaderRow, TOTAL_COLUMN).value = 'Hrs'
+                worksheet.getCell(block.partTimeHeaderRow, 1).value = 'Part time'
+                worksheet.getCell(block.partTimeHeaderRow, TOTAL_COLUMN).value = null
+
+                const fullTimeRows = buildWeekRowMap(week, 'fullTimeSections')
+                const partTimeRows = buildWeekRowMap(week, 'partTimeSections')
+
+                writeNamedRows({
+                    templateSheet,
+                    worksheet,
+                    rowStart: block.fullTimeHeaderRow + 1,
+                    names: block.fullTimeNames,
+                    rowMap: fullTimeRows,
+                    isPartTime: false
+                })
+
+                const partTimeRowStart = block.partTimeHeaderRow + 1
+                writeNamedRows({
+                    templateSheet,
+                    worksheet,
+                    rowStart: partTimeRowStart,
+                    names: block.partTimeNames,
+                    rowMap: partTimeRows,
+                    isPartTime: true
+                })
             })
 
-            const fillRange = (rowNumber: number, startColumn: number, endColumn: number, argb: string) => {
-                for (let column = startColumn; column <= endColumn; column += 1) {
-                    const cell = worksheet.getCell(rowNumber, column)
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } }
-                    cell.border = borderStyle
-                }
-            }
-
-            const mergePair = (rowNumber: number, dayIndex: number, value: string, fillArgb: string, fontArgb = 'FFFFFFFF') => {
-                const { startColumn, endColumn } = getDayPairColumns(dayIndex)
-                worksheet.mergeCells(rowNumber, startColumn, rowNumber, endColumn)
-                const cell = worksheet.getCell(rowNumber, startColumn)
-                cell.value = value
-                cell.alignment = { horizontal: 'center', vertical: 'middle' }
-                cell.font = { bold: true, color: { argb: fontArgb } }
-                fillRange(rowNumber, startColumn, endColumn, fillArgb)
-            }
-
-            const styleNameCell = (rowNumber: number, value: string, fillArgb: string, fontArgb = 'FFFFFFFF') => {
-                const cell = worksheet.getCell(rowNumber, 1)
-                cell.value = value
-                cell.font = { bold: true, color: { argb: fontArgb } }
-                cell.alignment = { horizontal: 'left', vertical: 'middle' }
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillArgb } }
-                cell.border = borderStyle
-            }
-
-            const renderSection = (startRow: number, title: string, sections: WeekSection[]) => {
-                let currentRow = startRow
-
-                worksheet.mergeCells(currentRow, 1, currentRow, WEEK_COLUMN_COUNT)
-                const headerCell = worksheet.getCell(currentRow, 1)
-                headerCell.value = title
-                headerCell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 }
-                headerCell.alignment = { horizontal: 'center', vertical: 'middle' }
-                fillRange(currentRow, 1, WEEK_COLUMN_COUNT, 'FF4A4A4A')
-                worksheet.getRow(currentRow).height = 18
-                currentRow += 1
-
-                for (const section of sections) {
-                    worksheet.mergeCells(currentRow, 1, currentRow, WEEK_COLUMN_COUNT)
-                    const sectionCell = worksheet.getCell(currentRow, 1)
-                    sectionCell.value = section.label
-                    sectionCell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                    sectionCell.alignment = { horizontal: 'center', vertical: 'middle' }
-                    fillRange(currentRow, 1, WEEK_COLUMN_COUNT, 'FF7A7A7A')
-                    worksheet.getRow(currentRow).height = 18
-                    currentRow += 1
-
-                    for (const row of section.rows) {
-                        renderUserRow(currentRow, row)
-                        currentRow += 1
-                    }
-                }
-
-                return currentRow
-            }
-
-            const renderUserRow = (rowNumber: number, row: WeekUserRow) => {
-                const excelRow = worksheet.getRow(rowNumber)
-                styleNameCell(rowNumber, row.user.name, 'FF5B5B5B')
-                worksheet.getCell(rowNumber, 1).alignment = { horizontal: 'right', vertical: 'middle' }
-                worksheet.getCell(rowNumber, 1).font = { size: 11, name: 'Calibri', color: { argb: 'FFFFFFFF' } }
-
-                row.dayCells.forEach((dayCell, dayIndex) => {
-                    const { startColumn, endColumn } = getDayPairColumns(dayIndex)
-                    const startCell = excelRow.getCell(startColumn)
-                    const endCell = excelRow.getCell(endColumn)
-
-                    startCell.value = dayCell.startTime
-                    endCell.value = dayCell.endTime
-                    startCell.alignment = { horizontal: 'center', vertical: 'middle' }
-                    endCell.alignment = { horizontal: 'center', vertical: 'middle' }
-                    startCell.border = getPairedTimeBorder('start')
-                    endCell.border = getPairedTimeBorder('end')
-
-                    if (dayCell.onLeave) {
-                        const label = dayCell.startTime ? dayCell.startTime : 'LEAVE'
-                        startCell.value = label
-                        endCell.value = dayCell.endTime
-                        startCell.font = { size: 12, name: 'Calibri', color: { argb: 'FFFFFFFF' } }
-                        endCell.font = { size: 12, name: 'Calibri', color: { argb: 'FFFFFFFF' } }
-                        startCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } }
-                        endCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } }
-                        return
-                    }
-
-                    if (dayCell.departmentColor) {
-                        const argb = `FF${dayCell.departmentColor.replace('#', '').toUpperCase()}`
-                        const fontArgb = getContrastTextColor(dayCell.departmentColor) === 'FFFFFF' ? 'FFFFFFFF' : 'FF000000'
-                        startCell.font = { size: 12, name: 'Calibri', color: { argb: fontArgb } }
-                        endCell.font = { size: 12, name: 'Calibri', color: { argb: fontArgb } }
-                        startCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } }
-                        endCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } }
-                        return
-                    }
-
-                    const emptyArgb = !dayCell.isInMonth ? 'FF9A9A9A' : dayCell.isHoliday ? 'FFBDBDBD' : 'FF8A8A8A'
-                    const textArgb = !dayCell.isInMonth ? 'FFDDDDDD' : 'FFCCCCCC'
-                    startCell.font = { size: 11, name: 'Calibri', color: { argb: textArgb } }
-                    endCell.font = { size: 11, name: 'Calibri', color: { argb: textArgb } }
-                    startCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: emptyArgb } }
-                    endCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: emptyArgb } }
-                })
-
-                excelRow.height = 22
-            }
-
-            let currentRow = 1
-            worksheet.mergeCells(currentRow, 1, currentRow, WEEK_COLUMN_COUNT)
-            const titleCell = worksheet.getCell(currentRow, 1)
-            titleCell.value = 'CityROCK Johannesburg'
-            titleCell.font = { size: 16, bold: true }
-            titleCell.alignment = { horizontal: 'left' }
-            currentRow += 1
-
-            worksheet.mergeCells(currentRow, 1, currentRow, WEEK_COLUMN_COUNT)
-            const subTitleCell = worksheet.getCell(currentRow, 1)
-            subTitleCell.value = `Staff Schedule: ${model.monthTitle}`
-            subTitleCell.font = { size: 12, bold: true }
-            subTitleCell.alignment = { horizontal: 'left' }
-            currentRow += 2
-
-            for (const week of model.weeks) {
-                worksheet.mergeCells(currentRow, 1, currentRow, WEEK_COLUMN_COUNT)
-                const weekCell = worksheet.getCell(currentRow, 1)
-                weekCell.value = week.weekLabel
-                weekCell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                weekCell.alignment = { horizontal: 'left', vertical: 'middle' }
-                fillRange(currentRow, 1, WEEK_COLUMN_COUNT, 'FF2B2B2B')
-                worksheet.getRow(currentRow).height = 18
-                currentRow += 1
-
-                styleNameCell(currentRow, 'Dates', 'FF111111')
-                week.days.forEach((day, dayIndex) => {
-                    const { startColumn } = getDayPairColumns(dayIndex)
-                    worksheet.mergeCells(currentRow, startColumn, currentRow, startColumn + 1)
-                    const cell = worksheet.getCell(currentRow, startColumn)
-                    cell.value = format(day, 'd-MMM')
-                    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                    cell.alignment = { horizontal: 'center', vertical: 'middle' }
-                    const fillArgb = 'FF000000'
-                    fillRange(currentRow, startColumn, startColumn + 1, fillArgb)
-                })
-                worksheet.getRow(currentRow).height = 20
-                currentRow += 1
-
-                styleNameCell(currentRow, 'Day', 'FF111111')
-                week.days.forEach((day, dayIndex) => {
-                    const { startColumn } = getDayPairColumns(dayIndex)
-                    worksheet.mergeCells(currentRow, startColumn, currentRow, startColumn + 1)
-                    const cell = worksheet.getCell(currentRow, startColumn)
-                    cell.value = format(day, 'EEEE')
-                    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                    cell.alignment = { horizontal: 'center', vertical: 'middle' }
-                    fillRange(currentRow, startColumn, startColumn + 1, 'FF000000')
-                })
-                worksheet.getRow(currentRow).height = 20
-                currentRow += 1
-
-                styleNameCell(currentRow, 'Intro', 'FFF97316')
-                week.introNames.forEach((name, dayIndex) => {
-                    const { startColumn, endColumn } = getDayPairColumns(dayIndex)
-                    const labelCell = worksheet.getCell(currentRow, startColumn)
-                    const nameCell = worksheet.getCell(currentRow, endColumn)
-                    labelCell.value = name ? 'Intro' : ''
-                    nameCell.value = name
-                    labelCell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                    nameCell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-                    labelCell.alignment = { horizontal: 'left', vertical: 'middle' }
-                    nameCell.alignment = { horizontal: 'center', vertical: 'middle' }
-                    labelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF97316' } }
-                    nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF97316' } }
-                    labelCell.border = borderStyle
-                    nameCell.border = borderStyle
-                })
-                worksheet.getRow(currentRow).height = 20
-                currentRow += 1
-
-                styleNameCell(currentRow, 'MOD', 'FFB3B3B3', 'FF000000')
-                week.modNames.forEach((value, dayIndex) => mergePair(currentRow, dayIndex, value, 'FFB3B3B3', 'FF000000'))
-                worksheet.getRow(currentRow).height = 18
-                currentRow += 1
-
-                styleNameCell(currentRow, 'SMOD', 'FF9F9F9F', 'FF000000')
-                week.smodNames.forEach((value, dayIndex) => mergePair(currentRow, dayIndex, value, 'FF9F9F9F', 'FF000000'))
-                worksheet.getRow(currentRow).height = 18
-                currentRow += 1
-
-                currentRow = renderSection(currentRow, 'Full time & Cafe', week.fullTimeSections)
-                currentRow = renderSection(currentRow, 'Part time', week.partTimeSections)
-                currentRow += 1
-            }
-
-            worksheet.getColumn(1).width = 18
-            for (let column = 2; column <= WEEK_COLUMN_COUNT; column += 1) {
-                worksheet.getColumn(column).width = 8.5
-            }
-
             const buffer = await workbook.xlsx.writeBuffer()
-            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-            saveAs(blob, `Roster_${currentMonth}_Enhanced.xlsx`)
+            const blob = new Blob([buffer], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            })
+            saveAs(blob, `Roster_${currentMonth}.xlsx`)
         } finally {
             setIsExporting(false)
         }

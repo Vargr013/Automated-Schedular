@@ -87,6 +87,31 @@ function looksLikeExportDate(text: string): boolean {
     return /^\d{1,2}-[A-Za-z]{3}$/.test(text.trim())
 }
 
+function deriveMonthFromDates(worksheet: ExcelJS.Worksheet): string {
+    const monthCounts = new Map<string, number>()
+
+    worksheet.eachRow((row) => {
+        for (let colNumber = DAY_COLUMN_START; colNumber <= WEEK_COLUMN_COUNT; colNumber += DAY_PAIR_WIDTH) {
+            const cellValue = row.getCell(colNumber).value
+            if (!(cellValue instanceof Date)) continue
+
+            const key = format(cellValue, 'yyyy-MM')
+            monthCounts.set(key, (monthCounts.get(key) || 0) + 1)
+        }
+    })
+
+    let derivedMonth = ''
+    let highestCount = 0
+    monthCounts.forEach((count, key) => {
+        if (count > highestCount) {
+            highestCount = count
+            derivedMonth = key
+        }
+    })
+
+    return derivedMonth
+}
+
 // --- Main Action ---
 
 export async function importRoster(formData: FormData): Promise<ImportReport> {
@@ -130,8 +155,11 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
         })
 
         if (!monthStr) {
-            // Fallback: Try to find simple dates in row headers
-            return { success: false, message: 'Could not detect month from header (Expected "Staff Schedule: Month Year").', shiftsToCreate: [], conflicts: [], stats: { totalShiftsFound: 0, usersFound: 0 } }
+            monthStr = deriveMonthFromDates(worksheet)
+        }
+
+        if (!monthStr) {
+            return { success: false, message: 'Could not detect month from workbook dates.', shiftsToCreate: [], conflicts: [], stats: { totalShiftsFound: 0, usersFound: 0 } }
         }
 
         // Load Context Data
