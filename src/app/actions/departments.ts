@@ -19,6 +19,7 @@ export async function createDepartment(formData: FormData) {
     })
 
     revalidatePath('/admin/departments')
+    revalidatePath('/admin/staff')
 }
 
 export async function updateDepartment(formData: FormData) {
@@ -34,6 +35,7 @@ export async function updateDepartment(formData: FormData) {
         }
     })
     revalidatePath('/admin/departments')
+    revalidatePath('/admin/staff')
 }
 
 export async function deleteDepartment(formData: FormData) {
@@ -43,6 +45,7 @@ export async function deleteDepartment(formData: FormData) {
             where: { id }
         })
         revalidatePath('/admin/departments')
+        revalidatePath('/admin/staff')
     } catch (e) {
         console.error('Failed to delete department:', e)
         // In a real app we might return an error state

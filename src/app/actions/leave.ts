@@ -2,7 +2,8 @@
 
 import prisma from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
+import { getValidationMonthTag, getValidationMonthsForRange } from '@/lib/validation/cache-tags'
 
 export async function createLeaveRequest(formData: FormData) {
     const userId = parseInt(formData.get('userId') as string)
@@ -22,23 +23,32 @@ export async function createLeaveRequest(formData: FormData) {
         }
     })
 
-    revalidatePath(`/schedule/${userId}`)
-    revalidatePath('/admin/leave')
+    revalidatePath(`/schedule/${userId}`, 'page')
+    revalidatePath('/admin/leave', 'page')
 }
 
 export async function updateLeaveStatus(leaveId: number, status: 'APPROVED' | 'DECLINED' | 'PENDING') {
-    await prisma.leave.update({
+    const leave = await prisma.leave.update({
         where: { id: leaveId },
         data: { status }
     })
 
-    revalidatePath('/admin/leave')
+    revalidatePath('/admin/leave', 'page')
+    revalidatePath('/admin/roster', 'page')
+    for (const month of getValidationMonthsForRange(leave.startDate, leave.endDate)) {
+        revalidateTag(getValidationMonthTag(month), 'max')
+    }
 }
 
 export async function updateLeaveDetails(
     leaveId: number,
     data: { startDate: string; endDate: string; reason: string; leaveType: string }
 ) {
+    const existing = await prisma.leave.findUnique({
+        where: { id: leaveId },
+        select: { startDate: true, endDate: true }
+    })
+
     await prisma.leave.update({
         where: { id: leaveId },
         data: {
@@ -49,7 +59,15 @@ export async function updateLeaveDetails(
         }
     })
 
-    revalidatePath('/admin/leave')
+    revalidatePath('/admin/leave', 'page')
+    revalidatePath('/admin/roster', 'page')
+    const months = new Set<string>([
+        ...getValidationMonthsForRange(data.startDate, data.endDate),
+        ...(existing ? getValidationMonthsForRange(existing.startDate, existing.endDate) : [])
+    ])
+    for (const month of months) {
+        revalidateTag(getValidationMonthTag(month), 'max')
+    }
 }
 
 export async function getLeaveRequests(status?: string, leaveType?: string, month?: string) {

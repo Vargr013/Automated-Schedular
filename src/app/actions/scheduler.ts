@@ -1,10 +1,11 @@
 'use server'
 
 import prisma from '@/lib/prisma'
-import { revalidatePath } from 'next/cache'
-import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, startOfWeek, endOfWeek, addDays, subDays, isSameMonth } from 'date-fns'
+import { revalidatePath, revalidateTag } from 'next/cache'
+import { format, parseISO, endOfMonth, eachDayOfInterval, getDay, isSameDay, addDays, subDays } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
-import { User, Shift, UserSkill, Department, Prisma } from '@prisma/client'
+import { getValidationMonthTag, getValidationMonthsForRange } from '@/lib/validation/cache-tags'
+import { Prisma } from '@prisma/client'
 
 type EligibleStaffUser = Prisma.UserGetPayload<{
     include: {
@@ -39,16 +40,29 @@ export async function addLeave(data: { userId: number, startDate: string, endDat
             status: 'APPROVED' // Auto-approve for now as per existing logic flow implicitly assumed
         }
     })
-    revalidatePath('/admin/schedule')
-    revalidatePath('/admin/roster')
+    revalidatePath('/admin/schedule', 'page')
+    revalidatePath('/admin/roster', 'page')
+    for (const month of getValidationMonthsForRange(data.startDate, data.endDate)) {
+        revalidateTag(getValidationMonthTag(month), 'max')
+    }
 }
 
 export async function deleteLeave(id: number) {
+    const leave = await prisma.leave.findUnique({
+        where: { id },
+        select: { startDate: true, endDate: true }
+    })
+
     await prisma.leave.delete({
         where: { id }
     })
-    revalidatePath('/admin/schedule')
-    revalidatePath('/admin/roster')
+    revalidatePath('/admin/schedule', 'page')
+    revalidatePath('/admin/roster', 'page')
+    if (leave) {
+        for (const month of getValidationMonthsForRange(leave.startDate, leave.endDate)) {
+            revalidateTag(getValidationMonthTag(month), 'max')
+        }
+    }
 }
 
 export async function getLeavesForMonth(month: string) {
@@ -91,15 +105,6 @@ type SchedulerParams = {
     month: string // "YYYY-MM"
 }
 
-function calculateShiftHours(start: string, end: string): number {
-    const [startH, startM] = start.split(':').map(Number)
-    const [endH, endM] = end.split(':').map(Number)
-    const startDate = new Date(0, 0, 0, startH, startM)
-    const endDate = new Date(0, 0, 0, endH, endM)
-    const diff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)
-    return diff > 0 ? diff : diff + 24 // Handle overnight if needed
-}
-
 // --- Clear Schedule ---
 
 export async function clearSchedule(month: string) {
@@ -118,7 +123,8 @@ export async function clearSchedule(month: string) {
         }
     })
 
-    revalidatePath('/admin/roster')
+    revalidatePath('/admin/roster', 'page')
+    revalidateTag(getValidationMonthTag(month), 'max')
 }
 
 export async function generateSchedule({ month }: SchedulerParams) {
@@ -222,7 +228,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
     }
 
     // Helper: Check availability
-    const isAvailable = (user: EligibleStaffUser, date: Date, shiftHours: number) => {
+    const isAvailable = (user: EligibleStaffUser, date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd')
 
         // Check Leave
@@ -265,7 +271,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
     }
 
     // --- HELPER: Process Single Day ---
-    const processDay = (day: Date, isPhase1Weekend: boolean) => {
+    const processDay = (day: Date) => {
         const dateStr = format(day, 'yyyy-MM-dd')
         const dayOfWeek = getDay(day) // 0=Sun, 1=Mon...
 
@@ -300,7 +306,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
         }
 
         // Sort: SMOD first
-        slotsNeeded.sort((a, b) => (a.isSmod ? -1 : 1))
+        slotsNeeded.sort((a) => (a.isSmod ? -1 : 1))
 
         const assignedUserIdsToday = new Set<number>()
 
@@ -310,11 +316,11 @@ export async function generateSchedule({ month }: SchedulerParams) {
 
         for (const slot of slotsNeeded) {
             // Count Existing Matches
-            const matchingExisting = dailyExistingShifts.filter((s: any) =>
-                s.department_id === slot.deptId &&
-                !claimedShiftIds.has(s.id) &&
-                isTimeMatch(slot.start, slot.end, s.start_time, s.end_time, slot.tolerance) &&
-                (slot.requiredType ? s.user.type === slot.requiredType : true)
+            const matchingExisting = dailyExistingShifts.filter((shift) =>
+                shift.department_id === slot.deptId &&
+                !claimedShiftIds.has(shift.id) &&
+                isTimeMatch(slot.start, slot.end, shift.start_time, shift.end_time, slot.tolerance) &&
+                (slot.requiredType ? shift.user.type === slot.requiredType : true)
             )
 
             let matchesFound = 0
@@ -337,8 +343,6 @@ export async function generateSchedule({ month }: SchedulerParams) {
             const actualNeeded = slot.count - matchesFound
             if (actualNeeded <= 0) continue
 
-            const shiftHours = calculateShiftHours(slot.start, slot.end)
-
             for (let i = 0; i < actualNeeded; i++) {
                 // Find Candidates
                 let candidates = eligibleStaff.filter((user) => {
@@ -350,7 +354,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
                     }
 
                     if (slot.requiredType && user.type !== slot.requiredType) return false
-                    if (!isAvailable(user, day, shiftHours)) return false
+                    if (!isAvailable(user, day)) return false
 
                     // Skill Check
                     const hasSkill = user.skills.some((s) => s.department.id === slot.deptId)
@@ -500,12 +504,12 @@ export async function generateSchedule({ month }: SchedulerParams) {
 
     for (const sat of saturdays) {
         // 1. Schedule Saturday
-        processDay(sat, true)
+        processDay(sat)
 
         // 2. Schedule Sunday (only if in month)
         const sun = addDays(sat, 1)
         if (daysInMonth.find(d => isSameDay(d, sun))) {
-            processDay(sun, true)
+            processDay(sun)
         }
 
         // 3. APPLY BLOCKING RULE (Sat + Sun = Block Fri & Mon)
@@ -551,7 +555,7 @@ export async function generateSchedule({ month }: SchedulerParams) {
         // Skip Weekends (already done)
         if (dow === 0 || dow === 6) continue
 
-        processDay(day, false)
+        processDay(day)
     }
 
     // Save to DB
@@ -561,5 +565,6 @@ export async function generateSchedule({ month }: SchedulerParams) {
         })
     }
 
-    revalidatePath('/admin/roster')
+    revalidatePath('/admin/roster', 'page')
+    revalidateTag(getValidationMonthTag(month), 'max')
 }

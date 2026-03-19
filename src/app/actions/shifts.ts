@@ -1,10 +1,15 @@
 'use server'
 
 import prisma from '@/lib/prisma'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { startOfMonth, endOfMonth, eachDayOfInterval, getDay, format, parseISO, subDays } from 'date-fns'
 import { validateRoster } from '@/lib/validation/engine'
-import { getLeavesForMonth } from './scheduler'
+import { getLeavesForMonth, getLeavesForRange } from './scheduler'
+import { getValidationMonthTag, getValidationMonthsForRange } from '@/lib/validation/cache-tags'
+
+function getMonthFromDate(date: string) {
+    return date.slice(0, 7)
+}
 
 export async function getShifts(startDate: string, endDate: string) {
     // Dates should be in YYYY-MM-DD format
@@ -48,7 +53,7 @@ export async function createShift(formData: FormData) {
     const end_time = formData.get('end_time') as string
     const is_smod = formData.get('is_smod') === 'on'
 
-    await prisma.shift.create({
+    const shift = await prisma.shift.create({
         data: {
             user_id,
             department_id,
@@ -60,17 +65,32 @@ export async function createShift(formData: FormData) {
     })
 
     revalidatePath('/admin/roster')
+    revalidateTag(getValidationMonthTag(getMonthFromDate(date)), 'max')
+    return shift
 }
 
 export async function deleteShift(id: number) {
+    const existingShift = await prisma.shift.findUnique({
+        where: { id },
+        select: { date: true }
+    })
+
     await prisma.shift.delete({
         where: { id }
     })
 
     revalidatePath('/admin/roster')
+    if (existingShift) {
+        revalidateTag(getValidationMonthTag(getMonthFromDate(existingShift.date)), 'max')
+    }
 }
 
 export async function moveShift(shiftId: number, newUserId: number, newDate: string) {
+    const existingShift = await prisma.shift.findUnique({
+        where: { id: shiftId },
+        select: { date: true }
+    })
+
     await prisma.shift.update({
         where: { id: shiftId },
         data: {
@@ -79,6 +99,10 @@ export async function moveShift(shiftId: number, newUserId: number, newDate: str
         }
     })
     revalidatePath('/admin/roster')
+    if (existingShift) {
+        revalidateTag(getValidationMonthTag(getMonthFromDate(existingShift.date)), 'max')
+    }
+    revalidateTag(getValidationMonthTag(getMonthFromDate(newDate)), 'max')
 }
 
 export async function updateShift(formData: FormData) {
@@ -103,12 +127,21 @@ export async function updateShift(formData: FormData) {
     })
 
     revalidatePath('/admin/roster')
+    revalidateTag(getValidationMonthTag(getMonthFromDate(date)), 'max')
 }
 
-export async function generateSchedule(month: string) {
+async function generateBaseScheduleInternal(
+    month: string,
+    userId?: number,
+    range?: { startDate: string, endDate: string }
+) {
     const date = parseISO(`${month}-01`)
-    const start = startOfMonth(date)
-    const end = endOfMonth(date)
+    const monthStart = startOfMonth(date)
+    const monthEnd = endOfMonth(date)
+    const start = range ? parseISO(range.startDate) : monthStart
+    const end = range ? parseISO(range.endDate) : monthEnd
+    const generationStartDate = format(start, 'yyyy-MM-dd')
+    const generationEndDate = format(end, 'yyyy-MM-dd')
 
     // 1. Fetch Constraints & Buffer Shifts
     // HARDCODED RULE: Max 5 Days in 7 Day Window
@@ -129,16 +162,17 @@ export async function generateSchedule(month: string) {
     const bufferStart = subDays(start, 14) // 14 day buffer
     const existingShiftsDB = await prisma.shift.findMany({
         where: {
+            ...(userId ? { user_id: userId } : {}),
             date: {
                 gte: format(bufferStart, 'yyyy-MM-dd'),
-                lte: format(end, 'yyyy-MM-dd')
+                lte: generationEndDate
             }
         },
         include: { user: true, department: true } // Need checks? validation expects ShiftData
     })
 
     // Mutable list of shifts to track state during generation
-    let currentShifts = existingShiftsDB.map(s => ({
+    const currentShifts = existingShiftsDB.map(s => ({
         id: s.id,
         user_id: s.user_id,
         department_id: s.department_id,
@@ -149,13 +183,16 @@ export async function generateSchedule(month: string) {
 
     const days = eachDayOfInterval({ start, end })
     const rules = await prisma.userBaseRule.findMany({
+        where: userId ? { user_id: userId } : undefined,
         include: {
             template: true,
             user: true
         }
     })
 
-    const leaves = await getLeavesForMonth(month)
+    const leaves = range
+        ? await getLeavesForRange(generationStartDate, generationEndDate)
+        : await getLeavesForMonth(month)
 
     let createdCount = 0
 
@@ -214,7 +251,7 @@ export async function generateSchedule(month: string) {
                 // If any violation involves our candidate shift, skip it
                 // Note: The candidate has ID -1. 
                 // Violations usually return shiftId.
-                const isViolation = violations.some((v: any) => v.shiftId === -1)
+                const isViolation = violations.some((violation) => violation.shiftId === -1)
 
                 if (!isViolation) {
                     // Create in DB
@@ -245,5 +282,21 @@ export async function generateSchedule(month: string) {
     }
 
     revalidatePath('/admin/roster')
+    revalidatePath('/admin/base-schedule')
+    for (const affectedMonth of getValidationMonthsForRange(generationStartDate, generationEndDate)) {
+        revalidateTag(getValidationMonthTag(affectedMonth), 'max')
+    }
     return { success: true, count: createdCount }
+}
+
+export async function generateSchedule(month: string) {
+    return generateBaseScheduleInternal(month)
+}
+
+export async function generateScheduleForUser(month: string, userId: number) {
+    return generateBaseScheduleInternal(month, userId)
+}
+
+export async function generateScheduleForUserInRange(month: string, userId: number, startDate: string, endDate: string) {
+    return generateBaseScheduleInternal(month, userId, { startDate, endDate })
 }

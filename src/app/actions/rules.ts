@@ -1,7 +1,8 @@
 'use server'
 
 import prisma from '@/lib/prisma'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
+import { VALIDATION_RULES_TAG } from '@/lib/validation/cache-tags'
 
 // --- Types ---
 export type AutomationRuleData = {
@@ -50,7 +51,9 @@ export async function createRule(data: AutomationRuleData) {
             tolerance: data.tolerance
         }
     })
-    revalidatePath('/admin/rules')
+    revalidatePath('/admin/rules', 'page')
+    revalidatePath('/admin/roster', 'page')
+    revalidateTag(VALIDATION_RULES_TAG, 'max')
 }
 
 export async function updateRule(id: number, data: AutomationRuleData) {
@@ -67,14 +70,18 @@ export async function updateRule(id: number, data: AutomationRuleData) {
             tolerance: data.tolerance
         }
     })
-    revalidatePath('/admin/rules')
+    revalidatePath('/admin/rules', 'page')
+    revalidatePath('/admin/roster', 'page')
+    revalidateTag(VALIDATION_RULES_TAG, 'max')
 }
 
 export async function deleteRule(id: number) {
     await prisma.automationRule.delete({
         where: { id }
     })
-    revalidatePath('/admin/rules')
+    revalidatePath('/admin/rules', 'page')
+    revalidatePath('/admin/roster', 'page')
+    revalidateTag(VALIDATION_RULES_TAG, 'max')
 }
 
 // --- Seed Logic ---
@@ -133,7 +140,9 @@ export async function seedRules() {
     })
 
     await prisma.automationRule.createMany({ data: rules })
-    revalidatePath('/admin/rules')
+    revalidatePath('/admin/rules', 'page')
+    revalidatePath('/admin/roster', 'page')
+    revalidateTag(VALIDATION_RULES_TAG, 'max')
     return { success: true, message: `Imported ${rules.length} rules` }
 }
 

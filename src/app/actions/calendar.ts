@@ -4,7 +4,17 @@ import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 
 export async function getOperatingDays() {
+    return getOperatingDaysForRange()
+}
+
+export async function getOperatingDaysForRange(startDate?: string, endDate?: string) {
     return await prisma.operatingDay.findMany({
+        where: startDate && endDate ? {
+            date: {
+                gte: startDate,
+                lte: endDate
+            }
+        } : undefined,
         orderBy: {
             date: 'asc'
         }

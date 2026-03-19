@@ -1,27 +1,53 @@
 'use client'
 
+import { useSyncExternalStore } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 
-export default function DraggableShift({ shift, children }: { shift: any, children: React.ReactNode }) {
+type ShiftDragData = {
+    id: number
+    user_id: number
+    date: string
+}
+
+export default function DraggableShift({
+    shift,
+    children,
+    disabled = false
+}: {
+    shift: ShiftDragData
+    children: React.ReactNode
+    disabled?: boolean
+}) {
+    const isMounted = useSyncExternalStore(
+        () => () => {},
+        () => true,
+        () => false
+    )
+
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: `shift-${shift.id}`,
         data: {
             shiftId: shift.id,
             originalUserId: shift.user_id,
             originalDate: shift.date
-        }
+        },
+        disabled
     })
 
     const style = {
         transform: CSS.Translate.toString(transform),
         opacity: isDragging ? 0.5 : 1,
-        cursor: isDragging ? 'grabbing' : 'grab',
+        cursor: disabled ? 'default' : isDragging ? 'grabbing' : 'grab',
         zIndex: isDragging ? 1000 : 1,
     }
 
+    if (!isMounted) {
+        return <div style={style}>{children}</div>
+    }
+
     return (
-        <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+        <div ref={setNodeRef} style={style} {...(disabled ? {} : listeners)} {...(disabled ? {} : attributes)}>
             {children}
         </div>
     )

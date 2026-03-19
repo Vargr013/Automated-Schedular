@@ -38,11 +38,11 @@ export default function RosterImportButton({ currentMonth }: { currentMonth: str
         if (!report || !report.shiftsToCreate) return
 
         setIsProcessing(true)
-        await confirmRosterImport(report.shiftsToCreate, currentMonth)
+        await confirmRosterImport(report.shiftsToCreate, report.detectedMonth || currentMonth, report.coveredDates)
         setIsProcessing(false)
         setIsOpen(false)
         setReport(null)
-        alert('Roster overwritten successfully.')
+        alert(`Roster overwritten successfully for ${report.detectedMonth || currentMonth}.`)
         router.refresh()
     }
 
@@ -76,6 +76,12 @@ export default function RosterImportButton({ currentMonth }: { currentMonth: str
 
                     {report && report.success && (
                         <div className="space-y-6">
+                            {report.detectedMonth && report.detectedMonth !== currentMonth && (
+                                <div className="p-4 bg-amber-50 text-amber-900 rounded-lg border border-amber-200">
+                                    <strong>Month detected from file:</strong> {report.detectedMonth}. Import will use the file coverage instead of the currently selected month.
+                                </div>
+                            )}
+
                             {/* Stats */}
                             <div className="grid grid-cols-2 gap-6">
                                 <div className="p-6 bg-white rounded-xl border shadow-sm">
@@ -87,6 +93,12 @@ export default function RosterImportButton({ currentMonth }: { currentMonth: str
                                     <div className="text-3xl font-bold text-gray-900 mt-2">{report.stats.usersFound}</div>
                                 </div>
                             </div>
+
+                            {report.coveredDates.length > 0 && (
+                                <div className="p-4 bg-white rounded-xl border shadow-sm text-sm text-gray-600">
+                                    Coverage: {report.coveredDates[0]} to {report.coveredDates[report.coveredDates.length - 1]}
+                                </div>
+                            )}
 
                             {/* Conflicts */}
                             {report.conflicts.length > 0 ? (

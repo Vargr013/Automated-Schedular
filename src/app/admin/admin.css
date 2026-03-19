@@ -25,6 +25,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  padding: 0;
+  margin: 0;
 }
 
 .admin-sidebar nav a {
@@ -40,6 +42,134 @@
 .admin-sidebar nav a:hover {
   background-color: var(--sidebar-active);
   color: var(--sidebar-active-foreground);
+}
+
+.admin-nav-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-foreground);
+  padding: 0.35rem 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.admin-nav-advanced {
+  margin-top: 1rem !important;
+  padding-top: 1rem !important;
+  border-top: 1px solid var(--sidebar-border);
+}
+
+.roster-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.roster-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.roster-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.roster-summary-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  padding: 1rem;
+}
+
+.roster-summary-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-foreground);
+}
+
+.roster-summary-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin-top: 0.25rem;
+}
+
+.roster-summary-note {
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+  margin-top: 0.35rem;
+}
+
+.roster-grid-scroll {
+  overflow: auto;
+  flex: 1;
+  max-width: 100vw;
+  position: relative;
+  isolation: isolate;
+}
+
+.roster-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.roster-table-staff {
+  position: sticky;
+  left: 0;
+  min-width: 200px;
+  max-width: 200px;
+  background: var(--background);
+  background-clip: padding-box;
+  box-shadow: 8px 0 12px -12px rgba(15, 23, 42, 0.45);
+  transform: translateZ(0);
+}
+
+.roster-staff-header {
+  z-index: 40;
+  position: sticky;
+}
+
+.roster-staff-name {
+  z-index: 16;
+}
+
+.roster-table-day {
+  position: sticky;
+  z-index: 20;
+}
+
+.roster-table-section-primary,
+.roster-table-section-secondary {
+  position: sticky;
+  left: 0;
+  z-index: 18;
+  border-bottom: 1px solid var(--border);
+}
+
+.roster-table-section-primary {
+  padding: 0.75rem 1rem;
+  background-color: #333;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.roster-table-section-secondary {
+  padding: 0.5rem 1rem 0.5rem 2rem;
+  background-color: var(--muted);
+  color: var(--foreground);
+  font-weight: 700;
+  font-size: 0.875rem;
 }
 
 .admin-content {
