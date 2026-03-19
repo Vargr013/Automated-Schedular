@@ -52,6 +52,7 @@ const DEFAULT_ROW_HEIGHT = 16.5
 const BLACK = 'FF000000'
 const WHITE = 'FFFFFFFF'
 const LEAVE_FILL = 'FF000000'
+const INTRO_FILL = 'FFED7D31'
 const SHIFT_FONT = { name: 'Calibri', size: 11, bold: true, family: 2 }
 const NAME_FONT = { name: 'Aptos Narrow', size: 11, bold: true, family: 2 }
 
@@ -246,6 +247,10 @@ function writeIntroRow(templateSheet: any, worksheet: any, rowNumber: number, va
         const endCell = worksheet.getCell(rowNumber, endColumn)
         startCell.value = 'Intro'
         endCell.value = introName
+        startCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: INTRO_FILL }, bgColor: { argb: INTRO_FILL } }
+        endCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: INTRO_FILL }, bgColor: { argb: INTRO_FILL } }
+        startCell.font = { ...NAME_FONT, color: { argb: WHITE } }
+        endCell.font = { ...NAME_FONT, color: { argb: WHITE } }
         startCell.alignment = { horizontal: 'left', vertical: 'middle' }
         endCell.alignment = { horizontal: 'center', vertical: 'middle' }
     }
