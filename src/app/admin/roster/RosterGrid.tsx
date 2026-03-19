@@ -3,8 +3,9 @@
 import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { addDays, addWeeks, eachDayOfInterval, format, isSameDay, parseISO } from 'date-fns'
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
-import { AlertCircle, AlertTriangle, ClipboardPaste, Copy, Pencil, Plus, Repeat, Save, Trash2, X } from 'lucide-react'
-import { createShift, deleteShift, moveShift, updateShift } from '@/app/actions/shifts'
+import { AlertCircle, AlertTriangle, CalendarPlus, ClipboardPaste, Copy, Pencil, Plus, Repeat, Save, Trash2, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { createShift, deleteShift, generateScheduleForUserInRange, moveShift, updateShift } from '@/app/actions/shifts'
 import DraggableShift from './DraggableShift'
 import DroppableCell from './DroppableCell'
 
@@ -121,7 +122,8 @@ export default function RosterGrid({
     violations = [],
     leaves = [],
     startDate,
-    endDate
+    endDate,
+    currentMonth
 }: {
     users: User[]
     departments: Department[]
@@ -131,12 +133,16 @@ export default function RosterGrid({
     leaves?: Leave[]
     startDate: string
     endDate: string
+    currentMonth: string
 }) {
+    const router = useRouter()
     const [selectedCell, setSelectedCell] = useState<{ userId: number, date: string } | null>(null)
     const [selectedShift, setSelectedShift] = useState<Shift | null>(null)
     const [editor, setEditor] = useState<EditorState | null>(null)
     const [copiedShift, setCopiedShift] = useState<CopiedShift | null>(null)
     const [repeatState, setRepeatState] = useState<RepeatState | null>(null)
+    const [baseScheduleTarget, setBaseScheduleTarget] = useState<User | null>(null)
+    const [isGeneratingBaseSchedule, setIsGeneratingBaseSchedule] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [history, setHistory] = useState<HistoryAction[]>([])
 
@@ -314,6 +320,13 @@ export default function RosterGrid({
             ...CATEGORY_ORDER.flatMap((category) => groupedUsers.PART_TIME[category] || [])
         ]
     }, [groupedUsers])
+
+    const rosterMonthLabel = useMemo(() => format(parseISO(`${currentMonth}-01`), 'MMMM yyyy'), [currentMonth])
+    const visibleRosterLabel = useMemo(() => {
+        const startLabel = format(parseISO(startDate), 'd MMM')
+        const endLabel = format(parseISO(endDate), 'd MMM yyyy')
+        return `${startLabel} - ${endLabel}`
+    }, [endDate, startDate])
 
     const getShiftsForCell = (userId: number, dateStr: string) => {
         return shiftsByCell.get(`${userId}|${dateStr}`) || []
@@ -1034,6 +1047,123 @@ export default function RosterGrid({
         )
     }
 
+    const generateBaseScheduleForTarget = async () => {
+        if (!baseScheduleTarget) return
+
+        setIsGeneratingBaseSchedule(true)
+        try {
+            const result = await generateScheduleForUserInRange(currentMonth, baseScheduleTarget.id, startDate, endDate)
+            setBaseScheduleTarget(null)
+            alert(`Generated ${result.count} new shift${result.count === 1 ? '' : 's'} for ${baseScheduleTarget.name}.`)
+            router.refresh()
+        } catch (error) {
+            console.error(error)
+            alert('Failed to generate the base schedule for this staff member.')
+        } finally {
+            setIsGeneratingBaseSchedule(false)
+        }
+    }
+
+    const renderBaseScheduleModal = () => {
+        if (!baseScheduleTarget) return null
+
+        return (
+            <div
+                onClick={() => {
+                    if (!isGeneratingBaseSchedule) {
+                        setBaseScheduleTarget(null)
+                    }
+                }}
+                style={{
+                    position: 'fixed',
+                    inset: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.38)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '1rem',
+                    zIndex: 80
+                }}
+            >
+                <div
+                    onClick={(event) => event.stopPropagation()}
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.8rem',
+                        backgroundColor: 'var(--background)',
+                        border: '1px solid rgba(15, 23, 42, 0.12)',
+                        borderRadius: '14px',
+                        padding: '1rem',
+                        boxShadow: '0 30px 80px -32px rgba(15, 23, 42, 0.55)',
+                        minWidth: '320px',
+                        maxWidth: 'min(92vw, 420px)'
+                    }}
+                >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
+                        <div>
+                            <div style={{ fontSize: '0.95rem', color: 'var(--foreground)', fontWeight: 700 }}>
+                                Generate Base Schedule
+                            </div>
+                            <div style={{ fontSize: '0.76rem', color: 'var(--muted-foreground)', marginTop: '0.2rem' }}>
+                                Create shifts from recurring base rules for one staff member.
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => setBaseScheduleTarget(null)}
+                            disabled={isGeneratingBaseSchedule}
+                            style={{ padding: '0.35rem 0.45rem', fontSize: '0.72rem' }}
+                        >
+                            <X size={12} />
+                        </button>
+                    </div>
+
+                    <div style={{ display: 'grid', gap: '0.55rem', padding: '0.85rem', borderRadius: '10px', backgroundColor: 'rgba(var(--primary-rgb), 0.06)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', fontSize: '0.8rem' }}>
+                            <span style={{ color: 'var(--muted-foreground)' }}>Staff member</span>
+                            <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{baseScheduleTarget.name}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', fontSize: '0.8rem' }}>
+                            <span style={{ color: 'var(--muted-foreground)' }}>Month</span>
+                            <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{rosterMonthLabel}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', fontSize: '0.8rem' }}>
+                            <span style={{ color: 'var(--muted-foreground)' }}>Visible roster</span>
+                            <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{visibleRosterLabel}</span>
+                        </div>
+                    </div>
+
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
+                        Existing shifts for this staff member will be kept. Only missing shifts in the full visible roster window will be created.
+                    </p>
+
+                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                        <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => setBaseScheduleTarget(null)}
+                            disabled={isGeneratingBaseSchedule}
+                            style={{ padding: '0.5rem 0.7rem', fontSize: '0.76rem' }}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            className="btn"
+                            onClick={() => void generateBaseScheduleForTarget()}
+                            disabled={isGeneratingBaseSchedule}
+                            style={{ padding: '0.5rem 0.8rem', fontSize: '0.76rem' }}
+                        >
+                            {isGeneratingBaseSchedule ? 'Generating...' : 'Generate Schedule'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
     const renderUserRows = (userList: User[]) => {
         return userList.map((user) => (
             <tr key={`row-${user.id}`}>
@@ -1050,7 +1180,29 @@ export default function RosterGrid({
                         verticalAlign: 'top'
                     }}
                 >
-                    {user.name}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                        <span>{user.name}</span>
+                        <button
+                            type="button"
+                            className="btn btn-secondary"
+                            title={`Generate ${user.name}'s base schedule for ${rosterMonthLabel}`}
+                            onClick={(event) => {
+                                event.stopPropagation()
+                                setBaseScheduleTarget(user)
+                            }}
+                            style={{
+                                padding: '0.32rem 0.42rem',
+                                fontSize: '0.7rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                minWidth: '30px',
+                                minHeight: '30px'
+                            }}
+                        >
+                            <CalendarPlus size={13} />
+                        </button>
+                    </div>
                 </th>
                 {daysInMonth.map((day) => {
                     const dateStr = format(day, 'yyyy-MM-dd')
@@ -1412,6 +1564,7 @@ export default function RosterGrid({
                         {renderRepeatEditor()}
                     </div>
                 )}
+                {renderBaseScheduleModal()}
             </div>
         </DndContext>
     )

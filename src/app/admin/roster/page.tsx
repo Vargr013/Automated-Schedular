@@ -111,6 +111,7 @@ export default async function RosterPage({
                 leaves={leaves}
                 startDate={startDate}
                 endDate={endDate}
+                currentMonth={currentMonth}
             />
         </div >
     )
