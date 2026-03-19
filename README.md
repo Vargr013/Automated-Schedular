@@ -33,7 +33,7 @@ This application helps organizations manage staff rosters, leave requests, shift
 
 ## Technology Stack
 
-- **Framework**: Next.js 15 (App Router)
+- **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript
 - **Database**: PostgreSQL
 - **ORM**: Prisma
@@ -119,3 +119,13 @@ docker stop scheduler-local-db
 docker rm -f scheduler-local-db
 docker volume rm scheduler-app_scheduler_local_postgres
 ```
+
+## Vercel Deployment
+
+Deployment runbooks and smoke-test checklists live in [docs/vercel-deployment-checklist.md](docs/vercel-deployment-checklist.md).
+
+For production-like releases:
+
+- Keep `main` as the production branch and validate feature branches through Vercel Preview first.
+- Apply Prisma migrations with `npx prisma migrate deploy` during rollout instead of using `db push`.
+- If the server-side roster PDF route is unavailable in Preview or Production, use the browser print flow at `/roster-print?month=YYYY-MM`.

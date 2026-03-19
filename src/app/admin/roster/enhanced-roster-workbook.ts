@@ -430,8 +430,9 @@ export async function buildEnhancedRosterWorkbook({
     currentMonth: string
 }) {
     const templateWorkbook = new ExcelJS.Workbook()
-    const loadWorkbook = templateWorkbook.xlsx.load as (input: unknown) => Promise<unknown>
-    await loadWorkbook(templateBuffer)
+    const workbookInput = templateBuffer instanceof ArrayBuffer ? new Uint8Array(templateBuffer) : templateBuffer
+    const loadWorkbook = templateWorkbook.xlsx.load.bind(templateWorkbook.xlsx) as unknown as (input: Uint8Array | Buffer) => Promise<unknown>
+    await loadWorkbook(workbookInput)
     const templateSheet = templateWorkbook.worksheets[0]
     const templateBlocks = getTemplateBlocks(templateSheet)
 

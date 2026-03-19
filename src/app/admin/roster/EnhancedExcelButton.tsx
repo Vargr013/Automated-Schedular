@@ -54,6 +54,9 @@ export default function EnhancedExcelButton({
                 type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             })
             saveAs(blob, `Roster_${currentMonth}.xlsx`)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to export the Excel workbook.'
+            alert(message)
         } finally {
             setIsExporting(false)
         }
