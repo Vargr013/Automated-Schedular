@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createBaseRule, deleteBaseRule, moveBaseRule } from '@/app/actions/rules'
 import { DndContext, DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
+import { getContrastCssTextColor } from '../roster/color-utils'
 import DraggableBaseRule from './DraggableBaseRule'
 import DroppableBaseCell from './DroppableBaseCell'
 
@@ -132,6 +133,8 @@ export default function BaseScheduleGrid({
                                 </div>
                                 {WEEK_DAYS.map((day, index) => {
                                     const rule = getRuleForCell(user.id, day.id)
+                                    const pillTextColor = rule ? getContrastCssTextColor(rule.template.department.color_code) : '#fff'
+                                    const useDarkForegroundAccent = pillTextColor === '#000'
                                     return (
                                         <div
                                             key={`${user.id}-${day.id}`}
@@ -147,12 +150,13 @@ export default function BaseScheduleGrid({
                                                     <DraggableBaseRule key={rule.id} rule={rule}>
                                                         <div style={{
                                                             backgroundColor: rule.template.department.color_code,
-                                                            color: '#fff',
+                                                            color: pillTextColor,
                                                             padding: '6px 8px',
                                                             borderRadius: '6px',
                                                             fontSize: '0.75rem',
                                                             boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                                                            position: 'relative'
+                                                            position: 'relative',
+                                                            border: useDarkForegroundAccent ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.18)'
                                                         }}>
                                                             <div style={{ fontWeight: '600' }}>{rule.template.name}</div>
                                                             <div style={{ opacity: 0.9 }}>{rule.template.start_time} - {rule.template.end_time}</div>
@@ -166,9 +170,9 @@ export default function BaseScheduleGrid({
                                                                     position: 'absolute',
                                                                     top: '4px',
                                                                     right: '4px',
-                                                                    background: 'rgba(0,0,0,0.2)',
-                                                                    border: 'none',
-                                                                    color: '#fff',
+                                                                    background: useDarkForegroundAccent ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.14)',
+                                                                    border: useDarkForegroundAccent ? '1px solid rgba(0,0,0,0.16)' : '1px solid rgba(255,255,255,0.18)',
+                                                                    color: pillTextColor,
                                                                     cursor: 'pointer',
                                                                     fontSize: '10px',
                                                                     width: '16px',

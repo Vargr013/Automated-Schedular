@@ -1,7 +1,6 @@
 import { format } from 'date-fns'
 import {
     buildRosterExportModel,
-    getContrastTextColor,
     type ExportLeave,
     type ExportShift,
     type ExportUser,
@@ -9,6 +8,7 @@ import {
     type WeekDayCell,
     type WeekSection
 } from './export-layout'
+import { getContrastTextColor } from './color-utils'
 import styles from './roster-print.module.css'
 
 type User = ExportUser

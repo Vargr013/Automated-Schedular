@@ -6,6 +6,7 @@ import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '
 import { AlertCircle, AlertTriangle, CalendarPlus, ClipboardPaste, Copy, Pencil, Plus, Repeat, Save, Trash2, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { createShift, deleteShift, generateScheduleForUserInRange, moveShift, updateShift } from '@/app/actions/shifts'
+import { getContrastCssTextColor } from './color-utils'
 import DraggableShift from './DraggableShift'
 import DroppableCell from './DroppableCell'
 
@@ -1292,6 +1293,12 @@ export default function RosterGrid({
                                         const shiftOnLeave = getApprovedLeaveForDate(user.id, shift.date)
                                         const isSelectedShift = selectedShift?.id === shift.id
                                         const isEditingShift = editor?.mode === 'edit' && editor.shiftId === shift.id
+                                        const pillTextColor = shiftOnLeave ? '#fff' : getContrastCssTextColor(shift.department.color_code)
+                                        const useDarkForegroundAccent = pillTextColor === '#000'
+                                        const pillActionBackground = useDarkForegroundAccent ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.14)'
+                                        const pillActionBorder = useDarkForegroundAccent ? '1px solid rgba(0,0,0,0.16)' : '1px solid rgba(255,255,255,0.18)'
+                                        const pillDefaultBorder = useDarkForegroundAccent ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.2)'
+                                        const pillSelectedBorder = useDarkForegroundAccent ? '2px solid rgba(0,0,0,0.48)' : '2px solid rgba(255,255,255,0.95)'
 
                                         return (
                                             <DraggableShift key={shift.id} shift={shift} disabled={isEditingShift}>
@@ -1299,7 +1306,7 @@ export default function RosterGrid({
                                                     onClick={(event) => handleShiftClick(event, shift)}
                                                     style={{
                                                         backgroundColor: shiftOnLeave ? '#000000' : shift.department.color_code,
-                                                        color: '#fff',
+                                                        color: pillTextColor,
                                                         padding: '6px 8px',
                                                         borderRadius: '6px',
                                                         fontSize: '0.75rem',
@@ -1310,8 +1317,8 @@ export default function RosterGrid({
                                                             : hasViolation
                                                                 ? '2px solid #f59e0b'
                                                                 : isSelectedShift
-                                                                    ? '2px solid rgba(255,255,255,0.95)'
-                                                                    : '1px solid rgba(255,255,255,0.2)',
+                                                                    ? pillSelectedBorder
+                                                                    : pillDefaultBorder,
                                                         cursor: 'pointer'
                                                     }}
                                                 >
@@ -1327,7 +1334,7 @@ export default function RosterGrid({
                                                                             event.stopPropagation()
                                                                             copyShift(shift)
                                                                         }}
-                                                                        style={{ background: 'rgba(255,255,255,0.14)', border: 'none', color: '#fff', borderRadius: '4px', padding: '2px', display: 'inline-flex', cursor: 'pointer' }}
+                                                                        style={{ background: pillActionBackground, border: pillActionBorder, color: pillTextColor, borderRadius: '4px', padding: '2px', display: 'inline-flex', cursor: 'pointer' }}
                                                                     >
                                                                         <Copy size={11} />
                                                                     </button>
@@ -1338,7 +1345,7 @@ export default function RosterGrid({
                                                                             event.stopPropagation()
                                                                             startEditEditor(shift)
                                                                         }}
-                                                                        style={{ background: 'rgba(255,255,255,0.14)', border: 'none', color: '#fff', borderRadius: '4px', padding: '2px', display: 'inline-flex', cursor: 'pointer' }}
+                                                                        style={{ background: pillActionBackground, border: pillActionBorder, color: pillTextColor, borderRadius: '4px', padding: '2px', display: 'inline-flex', cursor: 'pointer' }}
                                                                     >
                                                                         <Pencil size={11} />
                                                                     </button>
@@ -1349,16 +1356,16 @@ export default function RosterGrid({
                                                                             event.stopPropagation()
                                                                             startRepeatEditor(shift)
                                                                         }}
-                                                                        style={{ background: 'rgba(255,255,255,0.14)', border: 'none', color: '#fff', borderRadius: '4px', padding: '2px', display: 'inline-flex', cursor: 'pointer' }}
+                                                                        style={{ background: pillActionBackground, border: pillActionBorder, color: pillTextColor, borderRadius: '4px', padding: '2px', display: 'inline-flex', cursor: 'pointer' }}
                                                                     >
                                                                         <Repeat size={11} />
                                                                     </button>
                                                                 </>
                                                             )}
-                                                            {isConflict && <AlertTriangle size={12} color="white" fill="#ef4444" />}
+                                                            {isConflict && <AlertTriangle size={12} color={pillTextColor} fill="#ef4444" />}
                                                             {hasViolation && (
                                                                 <div title={shiftViolations.map((violation) => violation.message).join('\n')} style={{ cursor: 'help' }}>
-                                                                    <AlertCircle size={12} color="white" fill="#f59e0b" />
+                                                                    <AlertCircle size={12} color={pillTextColor} fill="#f59e0b" />
                                                                 </div>
                                                             )}
                                                         </div>

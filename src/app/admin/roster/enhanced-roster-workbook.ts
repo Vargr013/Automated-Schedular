@@ -1,7 +1,6 @@
 import { format } from 'date-fns'
 import {
     buildRosterExportModel,
-    getContrastTextColor,
     getDayPairColumns,
     ROSTER_EXPORT_VERSION,
     ROSTER_METADATA_SHEET,
@@ -22,6 +21,7 @@ import {
     type WeekBlock,
     type WeekUserRow
 } from './export-layout'
+import { getContrastTextColor } from './color-utils'
 
 type ExcelJSModule = typeof import('exceljs')
 type WorksheetLike = import('exceljs').Worksheet
