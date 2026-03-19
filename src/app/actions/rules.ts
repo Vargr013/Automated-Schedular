@@ -165,12 +165,41 @@ export async function createBaseRule(formData: FormData) {
     const template_id = Number(formData.get('template_id'))
     const day_of_week = Number(formData.get('day_of_week'))
 
-    await prisma.userBaseRule.create({
-        data: {
+    const existingRule = await prisma.userBaseRule.findFirst({
+        where: {
             user_id,
-            template_id,
-            day_of_week,
-            recurrence_type: 'WEEKLY' // Default
+            day_of_week
+        }
+    })
+
+    if (existingRule) {
+        await prisma.userBaseRule.update({
+            where: { id: existingRule.id },
+            data: {
+                template_id
+            }
+        })
+    } else {
+        await prisma.userBaseRule.create({
+            data: {
+                user_id,
+                template_id,
+                day_of_week,
+                recurrence_type: 'WEEKLY' // Default
+            }
+        })
+    }
+
+    revalidatePath('/admin/base-schedule')
+}
+
+export async function updateBaseRule(id: number, formData: FormData) {
+    const template_id = Number(formData.get('template_id'))
+
+    await prisma.userBaseRule.update({
+        where: { id },
+        data: {
+            template_id
         }
     })
     revalidatePath('/admin/base-schedule')
@@ -184,7 +213,18 @@ export async function deleteBaseRule(id: number) {
 }
 
 export async function moveBaseRule(ruleId: number, newUserId: number, newDayIndex: number) {
-    // Check if a rule already exists for this slot? (Optional business logic, skipping for flexibility)
+    const existingRule = await prisma.userBaseRule.findFirst({
+        where: {
+            user_id: newUserId,
+            day_of_week: newDayIndex
+        }
+    })
+
+    if (existingRule && existingRule.id !== ruleId) {
+        revalidatePath('/admin/base-schedule')
+        return
+    }
+
     await prisma.userBaseRule.update({
         where: { id: ruleId },
         data: {

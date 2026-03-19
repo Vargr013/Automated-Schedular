@@ -113,6 +113,7 @@ model UserBaseRule {
 
   @@index([user_id, day_of_week])
   @@index([template_id])
+  @@unique([user_id, day_of_week])
 }
 
 model Shift {

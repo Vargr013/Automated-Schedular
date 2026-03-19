@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { createBaseRule, deleteBaseRule, moveBaseRule } from '@/app/actions/rules'
+import { createBaseRule, deleteBaseRule, moveBaseRule, updateBaseRule } from '@/app/actions/rules'
 import { DndContext, DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { getContrastCssTextColor } from '../roster/color-utils'
 import DraggableBaseRule from './DraggableBaseRule'
@@ -32,6 +32,14 @@ type BaseRule = {
     template: Template
 }
 
+type BaseScheduleEditorState = {
+    mode: 'create' | 'edit'
+    userId: number
+    dayIndex: number
+    ruleId?: number
+    templateId?: number
+}
+
 const WEEK_DAYS = [
     { name: 'Monday', id: 1 },
     { name: 'Tuesday', id: 2 },
@@ -51,9 +59,8 @@ export default function BaseScheduleGrid({
     templates: Template[]
     rules: BaseRule[]
 }) {
-    const [selectedCell, setSelectedCell] = useState<{ userId: number, dayIndex: number } | null>(null)
+    const [editor, setEditor] = useState<BaseScheduleEditorState | null>(null)
 
-    // DnD Sensors
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: {
@@ -81,7 +88,6 @@ export default function BaseScheduleGrid({
         return rules.find(r => r.user_id === userId && r.day_of_week === dayIndex)
     }
 
-    // Helper to get day name from index (0-6)
     const getDayName = (dayIndex: number) => {
         return WEEK_DAYS.find(d => d.id === dayIndex)?.name || 'Unknown'
     }
@@ -91,7 +97,6 @@ export default function BaseScheduleGrid({
             <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ overflowX: 'auto' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: `200px repeat(7, minmax(140px, 1fr))` }}>
-                        {/* Header */}
                         <div style={{
                             padding: '1rem',
                             fontWeight: '600',
@@ -115,7 +120,6 @@ export default function BaseScheduleGrid({
                             </div>
                         ))}
 
-                        {/* Rows */}
                         {users.map(user => (
                             <div key={user.id} style={{ display: 'contents' }}>
                                 <div style={{
@@ -135,10 +139,19 @@ export default function BaseScheduleGrid({
                                     const rule = getRuleForCell(user.id, day.id)
                                     const pillTextColor = rule ? getContrastCssTextColor(rule.template.department.color_code) : '#fff'
                                     const useDarkForegroundAccent = pillTextColor === '#000'
+
                                     return (
                                         <div
                                             key={`${user.id}-${day.id}`}
-                                            onClick={() => setSelectedCell({ userId: user.id, dayIndex: day.id })}
+                                            onClick={() => {
+                                                if (!rule) {
+                                                    setEditor({
+                                                        mode: 'create',
+                                                        userId: user.id,
+                                                        dayIndex: day.id
+                                                    })
+                                                }
+                                            }}
                                             style={{
                                                 borderBottom: '1px solid var(--border)',
                                                 borderRight: index === 6 ? 'none' : '1px solid var(--border)',
@@ -148,24 +161,37 @@ export default function BaseScheduleGrid({
                                             <DroppableBaseCell userId={user.id} dayIndex={day.id}>
                                                 {rule ? (
                                                     <DraggableBaseRule key={rule.id} rule={rule}>
-                                                        <div style={{
-                                                            backgroundColor: rule.template.department.color_code,
-                                                            color: pillTextColor,
-                                                            padding: '6px 8px',
-                                                            borderRadius: '6px',
-                                                            fontSize: '0.75rem',
-                                                            boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                                                            position: 'relative',
-                                                            border: useDarkForegroundAccent ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.18)'
-                                                        }}>
+                                                        <div
+                                                            onClick={(event) => {
+                                                                event.stopPropagation()
+                                                                setEditor({
+                                                                    mode: 'edit',
+                                                                    userId: user.id,
+                                                                    dayIndex: day.id,
+                                                                    ruleId: rule.id,
+                                                                    templateId: rule.template_id
+                                                                })
+                                                            }}
+                                                            style={{
+                                                                backgroundColor: rule.template.department.color_code,
+                                                                color: pillTextColor,
+                                                                padding: '6px 8px',
+                                                                borderRadius: '6px',
+                                                                fontSize: '0.75rem',
+                                                                boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                                                position: 'relative',
+                                                                border: useDarkForegroundAccent ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.18)'
+                                                            }}
+                                                        >
                                                             <div style={{ fontWeight: '600' }}>{rule.template.name}</div>
                                                             <div style={{ opacity: 0.9 }}>{rule.template.start_time} - {rule.template.end_time}</div>
                                                             <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation()
+                                                                type="button"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation()
                                                                     if (confirm('Remove base rule?')) deleteBaseRule(rule.id)
                                                                 }}
-                                                                onPointerDown={(e) => e.stopPropagation()}
+                                                                onPointerDown={(event) => event.stopPropagation()}
                                                                 style={{
                                                                     position: 'absolute',
                                                                     top: '4px',
@@ -183,14 +209,15 @@ export default function BaseScheduleGrid({
                                                                     justifyContent: 'center'
                                                                 }}
                                                             >
-                                                                ✕
+                                                                x
                                                             </button>
                                                         </div>
                                                     </DraggableBaseRule>
                                                 ) : (
-                                                    <div style={{ height: '100%', minHeight: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0 }}
-                                                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                                                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
+                                                    <div
+                                                        style={{ height: '100%', minHeight: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0 }}
+                                                        onMouseEnter={(event) => event.currentTarget.style.opacity = '1'}
+                                                        onMouseLeave={(event) => event.currentTarget.style.opacity = '0'}
                                                     >
                                                         <span style={{ fontSize: '1.5rem', color: 'var(--muted-foreground)' }}>+</span>
                                                     </div>
@@ -204,50 +231,65 @@ export default function BaseScheduleGrid({
                     </div>
                 </div>
 
-                {/* Modal */}
-                {selectedCell && (
-                    <div className="modal-overlay" onClick={() => setSelectedCell(null)}>
-                        <div className="modal-content" onClick={e => e.stopPropagation()}>
+                {editor && (
+                    <div className="modal-overlay" onClick={() => setEditor(null)}>
+                        <div className="modal-content" onClick={(event) => event.stopPropagation()}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                <h3 style={{ fontSize: '1.25rem' }}>Assign Base Shift</h3>
-                                <button onClick={() => setSelectedCell(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--muted-foreground)' }}>&times;</button>
+                                <h3 style={{ fontSize: '1.25rem' }}>{editor.mode === 'edit' ? 'Edit Base Shift' : 'Assign Base Shift'}</h3>
+                                <button onClick={() => setEditor(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem', color: 'var(--muted-foreground)' }}>&times;</button>
                             </div>
 
                             <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'var(--muted)', borderRadius: 'var(--radius)' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                     <span style={{ color: 'var(--muted-foreground)' }}>Staff:</span>
-                                    <span style={{ fontWeight: '600' }}>{users.find(u => u.id === selectedCell.userId)?.name}</span>
+                                    <span style={{ fontWeight: '600' }}>{users.find(u => u.id === editor.userId)?.name}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                     <span style={{ color: 'var(--muted-foreground)' }}>Day:</span>
-                                    <span style={{ fontWeight: '600' }}>{getDayName(selectedCell.dayIndex)}</span>
+                                    <span style={{ fontWeight: '600' }}>{getDayName(editor.dayIndex)}</span>
                                 </div>
                             </div>
 
-                            <form action={async (formData) => {
-                                await createBaseRule(formData)
-                                setSelectedCell(null)
-                            }}>
-                                <input type="hidden" name="user_id" value={selectedCell.userId} />
-                                <input type="hidden" name="day_of_week" value={selectedCell.dayIndex} />
+                            <form
+                                key={`${editor.mode}-${editor.ruleId ?? 'new'}-${editor.userId}-${editor.dayIndex}-${editor.templateId ?? 'none'}`}
+                                action={async (formData) => {
+                                    if (editor.mode === 'edit' && editor.ruleId) {
+                                        await updateBaseRule(editor.ruleId, formData)
+                                    } else {
+                                        await createBaseRule(formData)
+                                    }
+                                    setEditor(null)
+                                }}
+                            >
+                                <input type="hidden" name="user_id" value={editor.userId} />
+                                <input type="hidden" name="day_of_week" value={editor.dayIndex} />
 
                                 <div className="form-group">
                                     <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500', fontSize: '0.875rem' }}>Select Template</label>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto' }}>
                                         {templates.map(template => (
-                                            <label key={template.id} style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '1rem',
-                                                padding: '0.75rem',
-                                                border: '1px solid var(--border)',
-                                                borderRadius: 'var(--radius)',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.2s'
-                                            }}
+                                            <label
+                                                key={template.id}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '1rem',
+                                                    padding: '0.75rem',
+                                                    border: '1px solid var(--border)',
+                                                    borderRadius: 'var(--radius)',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s'
+                                                }}
                                                 className="template-option"
                                             >
-                                                <input type="radio" name="template_id" value={template.id} required style={{ accentColor: 'var(--primary)' }} />
+                                                <input
+                                                    type="radio"
+                                                    name="template_id"
+                                                    value={template.id}
+                                                    required
+                                                    defaultChecked={editor.templateId === template.id}
+                                                    style={{ accentColor: 'var(--primary)' }}
+                                                />
                                                 <div style={{ flex: 1 }}>
                                                     <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                         {template.name}
@@ -255,7 +297,7 @@ export default function BaseScheduleGrid({
                                                             fontSize: '0.65rem',
                                                             padding: '2px 6px',
                                                             borderRadius: '10px',
-                                                            backgroundColor: template.department.color_code + '20',
+                                                            backgroundColor: `${template.department.color_code}20`,
                                                             color: template.department.color_code
                                                         }}>
                                                             {template.department.name}
@@ -271,8 +313,8 @@ export default function BaseScheduleGrid({
                                 </div>
 
                                 <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-                                    <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setSelectedCell(null)}>Cancel</button>
-                                    <button type="submit" className="btn" style={{ flex: 1 }}>Assign</button>
+                                    <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setEditor(null)}>Cancel</button>
+                                    <button type="submit" className="btn" style={{ flex: 1 }}>{editor.mode === 'edit' ? 'Save' : 'Assign'}</button>
                                 </div>
                             </form>
                         </div>
