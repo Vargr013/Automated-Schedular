@@ -9,6 +9,19 @@ export const SMOD_DEPARTMENT_NAME = 'Shift Manager (SMOD)'
 export const WEEK_COLUMN_COUNT = 15
 export const DAY_COLUMN_START = 2
 export const DAY_PAIR_WIDTH = 2
+export const ROSTER_METADATA_SHEET = '__roster_meta'
+export const ROSTER_EXPORT_VERSION = 'enhanced-roster-v1'
+export const ROSTER_ROW_KIND_COLUMN = 17
+export const ROSTER_ROW_USER_ID_COLUMN = 18
+export const ROSTER_ROW_KIND_USER = 'USER_ROW'
+export const ROSTER_ROW_KIND_DATE = 'DATE_ROW'
+export const ROSTER_ROW_KIND_INTRO = 'INTRO_ROW'
+export const ROSTER_ROW_KIND_MOD = 'MOD_ROW'
+export const ROSTER_ROW_KIND_SMOD = 'SMOD_ROW'
+export const ROSTER_ROW_KIND_FULL_TIME_HEADER = 'FULL_TIME_HEADER'
+export const ROSTER_ROW_KIND_PART_TIME_HEADER = 'PART_TIME_HEADER'
+export const ROSTER_META_INFO_HEADER_ROW = 1
+export const ROSTER_META_SHIFT_HEADER_ROW = 6
 
 export type ExportUser = {
     id: number
@@ -20,6 +33,7 @@ export type ExportUser = {
 export type ExportShift = {
     id: number
     user_id: number
+    department_id: number
     date: string
     start_time: string
     end_time: string

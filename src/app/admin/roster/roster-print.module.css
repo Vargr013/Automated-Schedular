@@ -1,0 +1,216 @@
+.page {
+    min-height: 100vh;
+    background: #f2f2f2;
+    color: #111;
+    padding: 24px;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.screenToolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    padding: 14px 18px;
+    border: 1px solid #d4d4d4;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+}
+
+.screenHint {
+    margin: 0;
+    color: #555;
+    font-size: 14px;
+}
+
+.printButton {
+    border: 0;
+    border-radius: 8px;
+    background: #111;
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    padding: 10px 14px;
+    cursor: pointer;
+}
+
+.document {
+    background: #fff;
+    padding: 18px 18px 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+}
+
+.header {
+    margin-bottom: 10px;
+}
+
+.brand {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.subtitle {
+    margin: 4px 0 10px;
+    font-size: 16px;
+}
+
+.rule {
+    border: 0;
+    border-top: 1px solid #000;
+    margin: 0;
+}
+
+.weekBlock {
+    break-after: page;
+    page-break-after: always;
+    margin-top: 12px;
+}
+
+.weekBlock:last-child {
+    break-after: auto;
+    page-break-after: auto;
+}
+
+.weekLabel {
+    background: #2b2b2b;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 7px 10px;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    margin-bottom: 8px;
+}
+
+.table th,
+.table td {
+    border: 2px solid #1f1f1f;
+    padding: 4px 3px;
+    text-align: center;
+    vertical-align: middle;
+    font-size: 10px;
+    line-height: 1.15;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.nameCol {
+    width: 148px;
+}
+
+.timeCol {
+    width: calc((100% - 148px) / 14);
+}
+
+.leadCell {
+    text-align: left;
+    font-weight: 700;
+}
+
+.dateFill {
+    background: #5e5e5e;
+    color: #fff;
+    font-weight: 700;
+}
+
+.blackFill {
+    background: #000;
+    color: #fff;
+    font-weight: 700;
+}
+
+.greyFill {
+    background: #b3b3b3;
+    color: #000;
+    font-weight: 700;
+}
+
+.partTimeFill {
+    background: #8f8f8f;
+    color: #000;
+    font-weight: 700;
+}
+
+.introFill {
+    background: #ed7d31;
+    color: #fff;
+    font-weight: 700;
+}
+
+.nameCell {
+    background: #595959;
+    color: #fff;
+    text-align: right;
+    font-weight: 700;
+}
+
+.emptyOutMonth {
+    background: #7b7b7b;
+}
+
+.emptyHoliday {
+    background: #8c8c8c;
+}
+
+.emptyInMonth {
+    background: #7b7b7b;
+}
+
+.footerSpace {
+    height: 6px;
+}
+
+@page {
+    size: A4 landscape;
+    margin: 8mm;
+}
+
+@media print {
+    .page,
+    .document,
+    .table,
+    .table th,
+    .table td,
+    .weekLabel,
+    .blackFill,
+    .greyFill,
+    .partTimeFill,
+    .introFill,
+    .emptyOutMonth,
+    .emptyHoliday,
+    .emptyInMonth {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .page {
+        background: #fff;
+        padding: 0;
+    }
+
+    .container {
+        max-width: none;
+        margin: 0;
+    }
+
+    .screenToolbar {
+        display: none;
+    }
+
+    .document {
+        box-shadow: none;
+        padding: 0;
+    }
+}

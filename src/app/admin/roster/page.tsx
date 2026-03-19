@@ -3,7 +3,7 @@ import { getDepartments } from '@/app/actions/departments'
 import { getShifts } from '@/app/actions/shifts'
 import { getOperatingDaysForRange } from '@/app/actions/calendar'
 import { validateMonth, type RosterWarning } from '@/app/actions/constraints'
-import { getLeavesForMonth } from '@/app/actions/scheduler'
+import { getLeavesForRange } from '@/app/actions/scheduler'
 import RosterGrid from './RosterGrid'
 import MonthSelector from './MonthSelector'
 import GenerateButton from './GenerateButton'
@@ -35,7 +35,7 @@ export default async function RosterPage({
         getShifts(startDate, endDate),
         getOperatingDaysForRange(startDate, endDate),
         validateMonth(currentMonth),
-        getLeavesForMonth(currentMonth)
+        getLeavesForRange(startDate, endDate)
     ])
 
     const approvedLeaves = leaves.filter((leave) => leave.status === 'APPROVED')
@@ -95,8 +95,8 @@ export default async function RosterPage({
                     </div>
                     <div className="roster-action-group">
                         <ClearScheduleButton currentMonth={currentMonth} />
-                        <EnhancedPdfButton users={users} shifts={shifts} currentMonth={currentMonth} />
-                        <EnhancedExcelButton users={users} shifts={shifts} currentMonth={currentMonth} />
+                        <EnhancedPdfButton currentMonth={currentMonth} />
+                        <EnhancedExcelButton users={users} shifts={shifts} leaves={leaves} currentMonth={currentMonth} />
                         <RosterImportButton currentMonth={currentMonth} />
                     </div>
                 </div>

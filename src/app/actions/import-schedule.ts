@@ -1,13 +1,21 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import prisma from '@/lib/prisma'
 import ExcelJS from 'exceljs'
-import { format, parseISO, getDay } from 'date-fns'
+import { eachDayOfInterval, format, parseISO, getDay } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
-import { DAY_COLUMN_START, DAY_PAIR_WIDTH, WEEK_COLUMN_COUNT } from '@/app/admin/roster/export-layout'
-
-// --- Types ---
+import { getValidationMonthTag } from '@/lib/validation/cache-tags'
+import {
+    DAY_COLUMN_START,
+    DAY_PAIR_WIDTH,
+    ROSTER_METADATA_SHEET,
+    ROSTER_META_SHIFT_HEADER_ROW,
+    ROSTER_ROW_KIND_COLUMN,
+    ROSTER_ROW_KIND_SMOD,
+    ROSTER_ROW_USER_ID_COLUMN,
+    WEEK_COLUMN_COUNT
+} from '@/app/admin/roster/export-layout'
 
 export type ImportConflict = {
     type: 'RULE_VIOLATION' | 'LEAVE_CONFLICT' | 'Unknown'
@@ -22,11 +30,14 @@ export type ScannedShift = {
     startTime: string
     endTime: string
     departmentId: number
+    isSmod: boolean
 }
 
 export type ImportReport = {
     success: boolean
     message: string
+    detectedMonth: string
+    coveredDates: string[]
     shiftsToCreate: ScannedShift[]
     conflicts: ImportConflict[]
     stats: {
@@ -35,31 +46,51 @@ export type ImportReport = {
     }
 }
 
-// --- Helpers ---
+type MetadataShift = {
+    userId: number
+    date: string
+    startTime: string
+    endTime: string
+    departmentId: number
+    isSmod: boolean
+}
+
+type WorkbookMetadata = {
+    month: string
+    coveredDates: string[]
+    shiftsByUserDate: Map<string, MetadataShift[]>
+}
+
+function emptyReport(message: string): ImportReport {
+    return {
+        success: false,
+        message,
+        detectedMonth: '',
+        coveredDates: [],
+        shiftsToCreate: [],
+        conflicts: [],
+        stats: {
+            totalShiftsFound: 0,
+            usersFound: 0
+        }
+    }
+}
 
 function normalizeColor(hex: string): string {
-    // DB: #RRGGBB or RRGGBB
-    // Excel: FFRRGGBB
-    // Return: FFRRGGBB uppercase
     let clean = hex.replace('#', '').toUpperCase()
-    if (clean.length === 6) clean = 'FF' + clean
+    if (clean.length === 6) clean = `FF${clean}`
     return clean
 }
 
 function parseTimeRange(text: string): { start: string, end: string } | null {
-    // Expected format: "08:00 - 17:00" or "8:00-17:00"
-    // Remove all whitespace
     const clean = text.replace(/\s/g, '')
     const parts = clean.split('-')
     if (parts.length !== 2) return null
 
-    // Simple validation of time format HH:mm
     const timeRegex = /^\d{1,2}:\d{2}$/
     if (!timeRegex.test(parts[0]) || !timeRegex.test(parts[1])) return null
 
-    // Pad with zero if needed (e.g. 8:00 -> 08:00)
-    const pad = (t: string) => t.length === 4 ? `0${t}` : t
-
+    const pad = (time: string) => (time.length === 4 ? `0${time}` : time)
     return {
         start: pad(parts[0]),
         end: pad(parts[1])
@@ -87,6 +118,13 @@ function looksLikeExportDate(text: string): boolean {
     return /^\d{1,2}-[A-Za-z]{3}$/.test(text.trim())
 }
 
+function parseNames(text: string): string[] {
+    return text
+        .split(/\/|,|\n/)
+        .map((name) => name.trim())
+        .filter(Boolean)
+}
+
 function deriveMonthFromDates(worksheet: ExcelJS.Worksheet): string {
     const monthCounts = new Map<string, number>()
 
@@ -112,12 +150,98 @@ function deriveMonthFromDates(worksheet: ExcelJS.Worksheet): string {
     return derivedMonth
 }
 
-// --- Main Action ---
+function getWorkbookMetadata(workbook: ExcelJS.Workbook): WorkbookMetadata {
+    const metadataSheet = workbook.getWorksheet(ROSTER_METADATA_SHEET)
+    if (!metadataSheet) {
+        return {
+            month: '',
+            coveredDates: [],
+            shiftsByUserDate: new Map()
+        }
+    }
+
+    const info = new Map<string, string>()
+    for (let rowNumber = 1; rowNumber < ROSTER_META_SHIFT_HEADER_ROW; rowNumber += 1) {
+        const key = cellText(metadataSheet.getCell(rowNumber, 1).value).trim()
+        const value = cellText(metadataSheet.getCell(rowNumber, 2).value).trim()
+        if (key && value) {
+            info.set(key, value)
+        }
+    }
+
+    const shiftsByUserDate = new Map<string, MetadataShift[]>()
+    for (let rowNumber = ROSTER_META_SHIFT_HEADER_ROW + 1; rowNumber <= metadataSheet.rowCount; rowNumber += 1) {
+        const userId = parseInt(cellText(metadataSheet.getCell(rowNumber, 1).value), 10)
+        const date = cellText(metadataSheet.getCell(rowNumber, 2).value).trim()
+        const startTime = cellText(metadataSheet.getCell(rowNumber, 3).value).trim()
+        const endTime = cellText(metadataSheet.getCell(rowNumber, 4).value).trim()
+        const departmentId = parseInt(cellText(metadataSheet.getCell(rowNumber, 5).value), 10)
+        const isSmod = cellText(metadataSheet.getCell(rowNumber, 6).value).trim().toLowerCase() === 'true'
+
+        if (!Number.isFinite(userId) || !date || !startTime || !endTime || !Number.isFinite(departmentId)) continue
+
+        const key = `${userId}|${date}`
+        const entry: MetadataShift = {
+            userId,
+            date,
+            startTime,
+            endTime,
+            departmentId,
+            isSmod
+        }
+
+        const existing = shiftsByUserDate.get(key)
+        if (existing) {
+            existing.push(entry)
+        } else {
+            shiftsByUserDate.set(key, [entry])
+        }
+    }
+
+    const rangeStart = info.get('rangeStart')
+    const rangeEnd = info.get('rangeEnd')
+    const coveredDates =
+        rangeStart && rangeEnd
+            ? eachDayOfInterval({ start: parseISO(rangeStart), end: parseISO(rangeEnd) }).map((day) => format(day, 'yyyy-MM-dd'))
+            : []
+
+    return {
+        month: info.get('month') || '',
+        coveredDates,
+        shiftsByUserDate
+    }
+}
+
+function getRowMetadata(row: ExcelJS.Row) {
+    const kind = cellText(row.getCell(ROSTER_ROW_KIND_COLUMN).value).trim()
+    const userIdText = cellText(row.getCell(ROSTER_ROW_USER_ID_COLUMN).value).trim()
+    const userId = userIdText ? parseInt(userIdText, 10) : NaN
+
+    return {
+        kind,
+        userId: Number.isFinite(userId) ? userId : null
+    }
+}
+
+function findMetadataShift(
+    shiftsByUserDate: Map<string, MetadataShift[]>,
+    userId: number,
+    date: string,
+    startTime: string,
+    endTime: string
+) {
+    const candidates = shiftsByUserDate.get(`${userId}|${date}`) || []
+    return (
+        candidates.find((candidate) => candidate.startTime === startTime && candidate.endTime === endTime) ||
+        [...candidates].sort((a, b) => a.startTime.localeCompare(b.startTime) || a.endTime.localeCompare(b.endTime))[0] ||
+        null
+    )
+}
 
 export async function importRoster(formData: FormData): Promise<ImportReport> {
     const file = formData.get('file') as File
     if (!file) {
-        return { success: false, message: 'No file uploaded', shiftsToCreate: [], conflicts: [], stats: { totalShiftsFound: 0, usersFound: 0 } }
+        return emptyReport('No file uploaded')
     }
 
     try {
@@ -127,43 +251,39 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
         const worksheet = workbook.getWorksheet('Roster')
 
         if (!worksheet) {
-            return { success: false, message: 'Invalid file format: "Roster" sheet not found.', shiftsToCreate: [], conflicts: [], stats: { totalShiftsFound: 0, usersFound: 0 } }
+            return emptyReport('Invalid file format: "Roster" sheet not found.')
         }
 
-        // 1. Identify Month from Header
-        // Look for cell with value "Staff Schedule: [Month] [Year]"
-        let monthStr = ''
+        const workbookMetadata = getWorkbookMetadata(workbook)
+        let monthStr = workbookMetadata.month
         let headerRowIdx = -1
 
-        worksheet.eachRow((row, rowNumber) => {
-            if (headerRowIdx !== -1) return
-            row.eachCell((cell) => {
-                if (cell.value && typeof cell.value === 'string' && cell.value.toString().startsWith('Staff Schedule:')) {
-                    const text = cell.value.toString()
-                    // Extract Date part
-                    const datePart = text.replace('Staff Schedule:', '').trim()
-                    // Try to parse "December 2025" -> "2025-12"
-                    try {
-                        const date = new Date(datePart) // JS Date parser is usually smart enough for "Month Year"
+        if (!monthStr) {
+            worksheet.eachRow((row, rowNumber) => {
+                if (headerRowIdx !== -1) return
+                row.eachCell((cell) => {
+                    if (cell.value && typeof cell.value === 'string' && cell.value.toString().startsWith('Staff Schedule:')) {
+                        const text = cell.value.toString()
+                        const datePart = text.replace('Staff Schedule:', '').trim()
+                        const date = new Date(datePart)
                         if (!isNaN(date.getTime())) {
                             monthStr = format(date, 'yyyy-MM')
                             headerRowIdx = rowNumber
                         }
-                    } catch (e) { console.error(e) }
-                }
+                    }
+                })
             })
-        })
+        }
 
         if (!monthStr) {
             monthStr = deriveMonthFromDates(worksheet)
         }
 
         if (!monthStr) {
-            return { success: false, message: 'Could not detect month from workbook dates.', shiftsToCreate: [], conflicts: [], stats: { totalShiftsFound: 0, usersFound: 0 } }
+            return emptyReport('Could not detect month from workbook dates.')
         }
 
-        // Load Context Data
-        const { start: monthStart, end: monthEnd } = getMonthRosterRange(monthStr)
+        const { start: monthStart } = getMonthRosterRange(monthStr)
         const users = await prisma.user.findMany({
             include: { skills: true }
         })
@@ -173,36 +293,43 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
                 status: 'APPROVED',
                 OR: [
                     { startDate: { gte: format(monthStart, 'yyyy-MM-dd') } },
-                    { endDate: { gte: format(monthStart, 'yyyy-MM-dd') } } // Rough filter
+                    { endDate: { gte: format(monthStart, 'yyyy-MM-dd') } }
                 ]
             }
         })
         const rules = await prisma.automationRule.findMany()
 
-        // Create Color Map
-        const colorMap = new Map<string, number>() // NormalizeARGB -> DeptId
-        departments.forEach(d => {
-            if (d.color_code) {
-                colorMap.set(normalizeColor(d.color_code), d.id)
+        const usersById = new Map(users.map((user) => [user.id, user]))
+        const usersByName = new Map<string, typeof users>()
+        users.forEach((user) => {
+            const key = user.name.trim().toLowerCase()
+            const existing = usersByName.get(key)
+            if (existing) {
+                existing.push(user)
+            } else {
+                usersByName.set(key, [user])
             }
         })
 
-        // 2 & 3. Scan Rows Sequentially (Stateful Parsing)
-        // The export has "Stacked Weeks". Each week has a Date Row, Day Row, then User Rows.
-        // We need to update dateColMap whenever we hit a Date Row.
+        const colorMap = new Map<string, number>()
+        departments.forEach((department) => {
+            if (department.color_code) {
+                colorMap.set(normalizeColor(department.color_code), department.id)
+            }
+        })
 
-        let currentDateColMap = new Map<number, string>() // ColIdx -> YYYY-MM-DD
+        let currentDateColMap = new Map<number, string>()
+        const coveredDates = new Set(workbookMetadata.coveredDates)
         const scannedShifts: ScannedShift[] = []
         const conflicts: ImportConflict[] = []
         const foundUserIds = new Set<number>()
+        const smodFlags = new Set<string>()
 
         worksheet.eachRow((row, rowNumber) => {
-            if (rowNumber <= headerRowIdx) return // Skip Main Title
+            if (rowNumber <= headerRowIdx) return
 
-            const cell1 = row.getCell(1)
-            const val1 = cell1.value ? cell1.value.toString() : ''
-            const cell2 = row.getCell(2)
-            const val2 = cell2.value
+            const label = cellText(row.getCell(1).value).trim()
+            const rowMetadata = getRowMetadata(row)
 
             const detectedDateCols = new Map<number, string>()
             for (let colNumber = DAY_COLUMN_START; colNumber <= WEEK_COLUMN_COUNT; colNumber += DAY_PAIR_WIDTH) {
@@ -214,19 +341,20 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
 
                 if (looksLikeExportDate(text)) {
                     const [day, monthShort] = text.split('-')
-                    const baseYear = parseInt(monthStr.split('-')[0])
+                    const baseYear = parseInt(monthStr.split('-')[0], 10)
                     const parsed = new Date(`${day} ${monthShort} ${baseYear}`)
 
                     if (!isNaN(parsed.getTime())) {
-                        const rosterMonthIndex = parseInt(monthStr.split('-')[1]) - 1
+                        const rosterMonthIndex = parseInt(monthStr.split('-')[1], 10) - 1
                         const parsedMonthIndex = parsed.getMonth()
 
                         let finalYear = baseYear
-                        if (rosterMonthIndex === 11 && parsedMonthIndex === 0) finalYear++
-                        if (rosterMonthIndex === 0 && parsedMonthIndex === 11) finalYear--
+                        if (rosterMonthIndex === 11 && parsedMonthIndex === 0) finalYear += 1
+                        if (rosterMonthIndex === 0 && parsedMonthIndex === 11) finalYear -= 1
 
                         parsed.setFullYear(finalYear)
-                        detectedDateCols.set(colNumber, format(parsed, 'yyyy-MM-dd'))
+                        const dateStr = format(parsed, 'yyyy-MM-dd')
+                        detectedDateCols.set(colNumber, dateStr)
                     }
                 } else if (cellVal instanceof Date) {
                     detectedDateCols.set(colNumber, format(cellVal, 'yyyy-MM-dd'))
@@ -235,71 +363,96 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
 
             if (detectedDateCols.size >= 5) {
                 currentDateColMap = detectedDateCols
+                detectedDateCols.forEach((dateStr) => coveredDates.add(dateStr))
                 return
             }
 
-            // Skip Day Name Row (Mon, Tue...) or Header/Spacer rows
-            // User Row check: Name matches a user
-            const user = users.find(u => u.name.toLowerCase() === val1.toLowerCase())
-
-            if (user) {
-                foundUserIds.add(user.id)
-                // Use CURRENT date map
+            const isSmodRow = rowMetadata.kind === ROSTER_ROW_KIND_SMOD || label.toUpperCase() === 'SMOD'
+            if (isSmodRow) {
                 currentDateColMap.forEach((dateStr, startColIdx) => {
-                    const startCell = row.getCell(startColIdx)
-                    const endCell = row.getCell(startColIdx + 1)
-
-                    const startText = cellText(startCell.value)
-                    const endText = cellText(endCell.value)
-                    const pairedStart = parseSingleTime(startText)
-                    const pairedEnd = parseSingleTime(endText)
-                    const combinedRange = parseTimeRange(startText)
-
-                    let parsedStart: string | null = null
-                    let parsedEnd: string | null = null
-
-                    if (pairedStart && pairedEnd) {
-                        parsedStart = pairedStart
-                        parsedEnd = pairedEnd
-                    } else if (combinedRange) {
-                        parsedStart = combinedRange.start
-                        parsedEnd = combinedRange.end
-                    }
-
-                    if (parsedStart && parsedEnd) {
-                        let deptId = user.skills[0]?.department_id || departments[0].id
-
-                        const candidateCells = [startCell, endCell]
-                        for (const candidateCell of candidateCells) {
-                            const fill = candidateCell.fill as ExcelJS.FillPattern
-                            if (fill && fill.type === 'pattern' && fill.fgColor && fill.fgColor.argb) {
-                                const mappedId = colorMap.get(normalizeColor(fill.fgColor.argb))
-                                if (mappedId) {
-                                    deptId = mappedId
-                                    break
-                                }
-                            }
+                    parseNames(cellText(row.getCell(startColIdx).value)).forEach((name) => {
+                        const matches = usersByName.get(name.toLowerCase()) || []
+                        if (matches.length === 1) {
+                            smodFlags.add(`${matches[0].id}|${dateStr}`)
                         }
-
-                        scannedShifts.push({
-                            userId: user.id,
-                            date: dateStr,
-                            startTime: parsedStart,
-                            endTime: parsedEnd,
-                            departmentId: deptId
-                        })
-                    }
+                    })
                 })
+                return
             }
+
+            const user =
+                (rowMetadata.userId ? usersById.get(rowMetadata.userId) : null) ||
+                (() => {
+                    const matches = usersByName.get(label.toLowerCase()) || []
+                    return matches.length === 1 ? matches[0] : null
+                })()
+
+            if (!user) return
+
+            foundUserIds.add(user.id)
+            currentDateColMap.forEach((dateStr, startColIdx) => {
+                const startCell = row.getCell(startColIdx)
+                const endCell = row.getCell(startColIdx + 1)
+
+                const startText = cellText(startCell.value)
+                const endText = cellText(endCell.value)
+                const pairedStart = parseSingleTime(startText)
+                const pairedEnd = parseSingleTime(endText)
+                const combinedRange = parseTimeRange(startText)
+
+                let parsedStart: string | null = null
+                let parsedEnd: string | null = null
+
+                if (pairedStart && pairedEnd) {
+                    parsedStart = pairedStart
+                    parsedEnd = pairedEnd
+                } else if (combinedRange) {
+                    parsedStart = combinedRange.start
+                    parsedEnd = combinedRange.end
+                }
+
+                if (!parsedStart || !parsedEnd) return
+
+                const metadataShift = findMetadataShift(
+                    workbookMetadata.shiftsByUserDate,
+                    user.id,
+                    dateStr,
+                    parsedStart,
+                    parsedEnd
+                )
+
+                let departmentId = metadataShift?.departmentId || user.skills[0]?.department_id || departments[0]?.id
+                for (const candidateCell of [startCell, endCell]) {
+                    const fill = candidateCell.fill as ExcelJS.FillPattern
+                    if (fill?.type === 'pattern' && fill.fgColor?.argb) {
+                        const mappedId = colorMap.get(normalizeColor(fill.fgColor.argb))
+                        if (mappedId) {
+                            departmentId = mappedId
+                            break
+                        }
+                    }
+                }
+
+                if (!departmentId) return
+
+                const key = `${user.id}|${dateStr}`
+                scannedShifts.push({
+                    userId: user.id,
+                    date: dateStr,
+                    startTime: parsedStart,
+                    endTime: parsedEnd,
+                    departmentId,
+                    isSmod: smodFlags.has(key) || metadataShift?.isSmod || false
+                })
+            })
         })
 
-        // 4. Validate LEAVE Conflicts
-        scannedShifts.forEach(shift => {
-            const userLeave = leaves.filter(l => l.userId === shift.userId)
-            const isConflict = userLeave.some(l => shift.date >= l.startDate && shift.date <= l.endDate)
+        scannedShifts.forEach((shift) => {
+            const userLeave = leaves.filter((leave) => leave.userId === shift.userId)
+            const isConflict = userLeave.some((leave) => shift.date >= leave.startDate && shift.date <= leave.endDate)
 
             if (isConflict) {
-                const user = users.find(u => u.id === shift.userId)
+                const user = usersById.get(shift.userId)
                 conflicts.push({
                     type: 'LEAVE_CONFLICT',
                     description: `User ${user?.name} is on leave on ${shift.date}`,
@@ -309,39 +462,27 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
             }
         })
 
-        // 5. Validate RULES (Understaffing)
-        // Group Shifts by Date + Dept
-        // Map<DateStr, Map<DeptId, Count>>
-        const shiftCounts = new Map<string, Map<number, number>>()
+        const importedDates = Array.from(new Set(scannedShifts.map((shift) => shift.date)))
 
-        scannedShifts.forEach(s => {
-            if (!shiftCounts.has(s.date)) shiftCounts.set(s.date, new Map())
-            const dayMap = shiftCounts.get(s.date)!
-            dayMap.set(s.departmentId, (dayMap.get(s.departmentId) || 0) + 1)
-        })
-
-        // Iterate Dates found in the import
-        const importedDates = Array.from(new Set(scannedShifts.map(s => s.date)))
-
-        importedDates.forEach(dateStr => {
+        importedDates.forEach((dateStr) => {
             const date = parseISO(dateStr)
             const dow = getDay(date)
-            const dayRules = rules.filter(r => r.day_of_week === dow)
+            const dayRules = rules.filter((rule) => rule.day_of_week === dow)
 
-            dayRules.forEach(rule => {
-                // Check if rule is satisfied
-                const matchingShiftsForRule = scannedShifts.filter(s =>
-                    s.date === dateStr &&
-                    s.departmentId === rule.department_id &&
-                    s.startTime === rule.start_time &&
-                    s.endTime === rule.end_time
+            dayRules.forEach((rule) => {
+                const matchingShiftsForRule = scannedShifts.filter((shift) =>
+                    shift.date === dateStr &&
+                    shift.departmentId === rule.department_id &&
+                    shift.startTime === rule.start_time &&
+                    shift.endTime === rule.end_time &&
+                    (!rule.is_smod || shift.isSmod)
                 )
 
                 if (matchingShiftsForRule.length < rule.count) {
-                    const dept = departments.find(d => d.id === rule.department_id)
+                    const department = departments.find((candidate) => candidate.id === rule.department_id)
                     conflicts.push({
                         type: 'RULE_VIOLATION',
-                        description: `Understaffed: ${dept?.name} needs ${rule.count} @ ${rule.start_time}-${rule.end_time} on ${dateStr}. Found ${matchingShiftsForRule.length}.`,
+                        description: `Understaffed: ${department?.name} needs ${rule.count} @ ${rule.start_time}-${rule.end_time} on ${dateStr}. Found ${matchingShiftsForRule.length}.`,
                         date: dateStr
                     })
                 }
@@ -351,6 +492,8 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
         return {
             success: true,
             message: 'Import processed successfully',
+            detectedMonth: monthStr,
+            coveredDates: Array.from(coveredDates).sort(),
             shiftsToCreate: scannedShifts,
             conflicts,
             stats: {
@@ -358,65 +501,71 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
                 usersFound: foundUserIds.size
             }
         }
-
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Import Error:', error)
-        return { success: false, message: `Error processing file: ${error.message}`, shiftsToCreate: [], conflicts: [], stats: { totalShiftsFound: 0, usersFound: 0 } }
+        const message = error instanceof Error ? error.message : 'Unknown import error'
+        return emptyReport(`Error processing file: ${message}`)
     }
 }
 
-export async function confirmRosterImport(shifts: ScannedShift[], month: string) {
-    if (!shifts || shifts.length === 0) return
+export async function confirmRosterImport(
+    shifts: ScannedShift[],
+    month: string,
+    coveredDates: string[] = []
+) {
+    if ((!shifts || shifts.length === 0) && coveredDates.length === 0) return
 
-    // Transaction
-    // 1. Delete all shifts in the range (actually, logic says "overwrite selected month")
-    // Note: The "Export" includes overlaps into prev/next month (full weeks).
-    // Should we delete STRICTLY within the month? Or valid range?
-    // "cancel or overwrite the selected month's calendar" -> implies the Month View.
-    // Safest: Delete only shifts that fall within the DATES contained in the import file?
-    // Or Delete strictly the Month?
-    // Let's stick to: Delete shifts in the Month Range (start-end from helper).
+    const uniqueCoveredDates = Array.from(new Set(coveredDates)).sort()
+    const coveredDateSet = new Set(uniqueCoveredDates)
 
-    const { start, end } = getMonthRosterRange(month)
-    const startStr = format(start, 'yyyy-MM-dd')
-    const endStr = format(end, 'yyyy-MM-dd')
+    let validShifts = shifts
+    let deleteWhere: { date: { in: string[] } | { gte: string, lte: string } }
+    let affectedMonths: string[]
 
-    // Filter new shifts to ensure we don't accidentally insert stuff way out of range (though UI should handle)
-    const validShifts = shifts.filter(s => s.date >= startStr && s.date <= endStr)
+    if (uniqueCoveredDates.length > 0) {
+        validShifts = shifts.filter((shift) => coveredDateSet.has(shift.date))
+        deleteWhere = {
+            date: {
+                in: uniqueCoveredDates
+            }
+        }
+        affectedMonths = Array.from(new Set(uniqueCoveredDates.map((date) => date.slice(0, 7))))
+    } else {
+        const { start, end } = getMonthRosterRange(month)
+        const startStr = format(start, 'yyyy-MM-dd')
+        const endStr = format(end, 'yyyy-MM-dd')
+
+        validShifts = shifts.filter((shift) => shift.date >= startStr && shift.date <= endStr)
+        deleteWhere = {
+            date: {
+                gte: startStr,
+                lte: endStr
+            }
+        }
+        affectedMonths = Array.from(new Set([startStr.slice(0, 7), endStr.slice(0, 7), month]))
+    }
 
     await prisma.$transaction(async (tx) => {
-        // Delete
         await tx.shift.deleteMany({
-            where: {
-                date: {
-                    gte: startStr,
-                    lte: endStr
-                }
-            }
+            where: deleteWhere
         })
 
-        // Create
         if (validShifts.length > 0) {
-            // Need to map to ShiftCreateInput
-            // Note: Shift model has `user_id`, `department_id` (snake_case in some schemas?)
-            // Checking schema from view_file earlier:
-            // model Shift { user_id, department_id, ... }
-
             await tx.shift.createMany({
-                data: validShifts.map(s => ({
-                    user_id: s.userId,
-                    department_id: s.departmentId,
-                    date: s.date,
-                    start_time: s.startTime,
-                    end_time: s.endTime,
-                    is_smod: false // Default, logic to infer SMOD? 
-                    // Export logic says: "SMOD" row or "SMOD" dept?
-                    // We mapped dept based on color.
-                    // If Dept Name is "Shift Manager (SMOD)", then ok.
+                data: validShifts.map((shift) => ({
+                    user_id: shift.userId,
+                    department_id: shift.departmentId,
+                    date: shift.date,
+                    start_time: shift.startTime,
+                    end_time: shift.endTime,
+                    is_smod: shift.isSmod
                 }))
             })
         }
     })
 
     revalidatePath('/admin/roster')
+    affectedMonths.forEach((affectedMonth) => {
+        revalidateTag(getValidationMonthTag(affectedMonth), 'max')
+    })
 }
