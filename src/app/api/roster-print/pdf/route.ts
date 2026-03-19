@@ -26,7 +26,7 @@ export async function GET(request: Request) {
         })
 
         const pdf = await page.pdf({
-            format: 'A4',
+            format: 'A3',
             landscape: true,
             printBackground: true,
             preferCSSPageSize: true

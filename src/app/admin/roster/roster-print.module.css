@@ -42,7 +42,7 @@
 
 .document {
     background: #fff;
-    padding: 18px 18px 6px;
+    padding: 12px 12px 4px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
 }
 
@@ -52,13 +52,13 @@
 
 .brand {
     margin: 0;
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 700;
 }
 
 .subtitle {
-    margin: 4px 0 10px;
-    font-size: 16px;
+    margin: 3px 0 8px;
+    font-size: 14px;
 }
 
 .rule {
@@ -68,9 +68,11 @@
 }
 
 .weekBlock {
+    break-inside: avoid;
+    page-break-inside: avoid;
     break-after: page;
     page-break-after: always;
-    margin-top: 12px;
+    margin-top: 8px;
 }
 
 .weekBlock:last-child {
@@ -81,9 +83,9 @@
 .weekLabel {
     background: #2b2b2b;
     color: #fff;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
-    padding: 7px 10px;
+    padding: 5px 8px;
 }
 
 .table {
@@ -96,22 +98,23 @@
 .table th,
 .table td {
     border: 2px solid #1f1f1f;
-    padding: 4px 3px;
+    padding: 3px 2px;
     text-align: center;
     vertical-align: middle;
-    font-size: 10px;
-    line-height: 1.15;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.05;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
 
 .nameCol {
-    width: 148px;
+    width: 138px;
 }
 
 .timeCol {
-    width: calc((100% - 148px) / 14);
+    width: calc((100% - 138px) / 14);
 }
 
 .leadCell {
@@ -173,8 +176,8 @@
 }
 
 @page {
-    size: A4 landscape;
-    margin: 8mm;
+    size: A3 landscape;
+    margin: 6mm;
 }
 
 @media print {
