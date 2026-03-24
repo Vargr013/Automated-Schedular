@@ -6,6 +6,7 @@ import { startOfMonth, endOfMonth, eachDayOfInterval, getDay, format, parseISO, 
 import { validateRoster } from '@/lib/validation/engine'
 import { getLeavesForMonth, getLeavesForRange } from './scheduler'
 import { getValidationMonthTag, getValidationMonthsForRange } from '@/lib/validation/cache-tags'
+import { requireAdmin } from '@/lib/admin-auth'
 
 function getMonthFromDate(date: string) {
     return date.slice(0, 7)
@@ -46,6 +47,8 @@ export async function getUserShifts(userId: number, startDate: string, endDate: 
 }
 
 export async function createShift(formData: FormData) {
+    await requireAdmin()
+
     const user_id = parseInt(formData.get('user_id') as string)
     const department_id = parseInt(formData.get('department_id') as string)
     const date = formData.get('date') as string
@@ -70,6 +73,8 @@ export async function createShift(formData: FormData) {
 }
 
 export async function deleteShift(id: number) {
+    await requireAdmin()
+
     const existingShift = await prisma.shift.findUnique({
         where: { id },
         select: { date: true }
@@ -86,6 +91,8 @@ export async function deleteShift(id: number) {
 }
 
 export async function moveShift(shiftId: number, newUserId: number, newDate: string) {
+    await requireAdmin()
+
     const existingShift = await prisma.shift.findUnique({
         where: { id: shiftId },
         select: { date: true }
@@ -106,6 +113,8 @@ export async function moveShift(shiftId: number, newUserId: number, newDate: str
 }
 
 export async function updateShift(formData: FormData) {
+    await requireAdmin()
+
     const id = parseInt(formData.get('id') as string)
     const user_id = parseInt(formData.get('user_id') as string)
     const department_id = parseInt(formData.get('department_id') as string)
@@ -135,6 +144,8 @@ async function generateBaseScheduleInternal(
     userId?: number,
     range?: { startDate: string, endDate: string }
 ) {
+    await requireAdmin()
+
     const date = parseISO(`${month}-01`)
     const monthStart = startOfMonth(date)
     const monthEnd = endOfMonth(date)

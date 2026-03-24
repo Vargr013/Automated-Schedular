@@ -3,6 +3,7 @@
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { requireAdmin } from '@/lib/admin-auth'
 
 const UserFormSchema = z.object({
     name: z.string().min(1, "Name is required"),
@@ -75,6 +76,8 @@ export async function getUser(id: number) {
 }
 
 export async function createUser(formData: FormData) {
+    await requireAdmin()
+
     const validatedFields = UserFormSchema.parse({
         name: formData.get('name'),
         email: formData.get('email'),
@@ -107,6 +110,8 @@ export async function createUser(formData: FormData) {
 }
 
 export async function updateUser(id: number, formData: FormData) {
+    await requireAdmin()
+
     const validatedFields = UserFormSchema.parse({
         name: formData.get('name'),
         email: formData.get('email'),
@@ -141,6 +146,8 @@ export async function updateUser(id: number, formData: FormData) {
 }
 
 export async function toggleAutoSchedule(id: number, auto_schedule: boolean) {
+    await requireAdmin()
+
     await prisma.user.update({
         where: { id },
         data: { auto_schedule }
@@ -149,6 +156,8 @@ export async function toggleAutoSchedule(id: number, auto_schedule: boolean) {
 }
 
 export async function deleteUser(id: number) {
+    await requireAdmin()
+
     // Delete skills first if cascade is not set? Prisma usually handles cascade if configured, but explicit m-n might need manual cleanup if not cascading.
     // UserSkill has user_id, so deleting user should cascade delete UserSkill rows if relation is set to cascade.
     // In schema: user User @relation(fields: [user_id], references: [id])

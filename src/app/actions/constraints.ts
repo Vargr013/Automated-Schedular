@@ -5,6 +5,7 @@ import { eachDayOfInterval, format, getDay, parseISO } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
 import { getValidationMonthTag, VALIDATION_RULES_TAG } from '@/lib/validation/cache-tags'
 import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache'
+import { requireAdmin } from '@/lib/admin-auth'
 
 export type RosterWarning = {
     type: 'LEAVE_CONFLICT' | 'UNDERSTAFFED'
@@ -30,6 +31,8 @@ export async function createConstraint(data: {
     severity: string
     department_id?: number | null
 }) {
+    await requireAdmin()
+
     await prisma.constraint.create({
         data: {
             ...data,
@@ -49,6 +52,8 @@ export async function updateConstraint(data: {
     severity: string
     department_id?: number | null
 }) {
+    await requireAdmin()
+
     await prisma.constraint.update({
         where: { id: data.id },
         data: {
@@ -65,6 +70,8 @@ export async function updateConstraint(data: {
 }
 
 export async function deleteConstraint(id: number) {
+    await requireAdmin()
+
     await prisma.constraint.delete({ where: { id } })
     revalidatePath('/admin/constraints', 'page')
     revalidatePath('/admin/roster', 'page')

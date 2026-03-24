@@ -5,8 +5,11 @@ import { revalidatePath } from 'next/cache'
 import nodemailer from 'nodemailer'
 import { getShifts } from './shifts'
 import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns'
+import { requireAdmin } from '@/lib/admin-auth'
 
 export async function publishSchedule(month: string, sendEmail: boolean) {
+    await requireAdmin()
+
     // month format: YYYY-MM
 
     // 1. Update DB

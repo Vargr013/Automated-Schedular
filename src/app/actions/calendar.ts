@@ -2,6 +2,7 @@
 
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import { requireAdmin } from '@/lib/admin-auth'
 
 export async function getOperatingDays() {
     return getOperatingDaysForRange()
@@ -22,6 +23,8 @@ export async function getOperatingDaysForRange(startDate?: string, endDate?: str
 }
 
 export async function createOperatingDay(formData: FormData) {
+    await requireAdmin()
+
     const date = formData.get('date') as string
     const status = formData.get('status') as string
     const event_note = formData.get('event_note') as string
@@ -42,6 +45,8 @@ export async function createOperatingDay(formData: FormData) {
 }
 
 export async function updateOperatingDay(formData: FormData) {
+    await requireAdmin()
+
     const id = parseInt(formData.get('id') as string)
     const status = formData.get('status') as string
     const event_note = formData.get('event_note') as string
@@ -62,6 +67,8 @@ export async function updateOperatingDay(formData: FormData) {
 }
 
 export async function deleteOperatingDay(formData: FormData) {
+    await requireAdmin()
+
     const id = Number(formData.get('id'))
     await prisma.operatingDay.delete({
         where: { id }

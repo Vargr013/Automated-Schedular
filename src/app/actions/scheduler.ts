@@ -6,6 +6,7 @@ import { format, parseISO, endOfMonth, eachDayOfInterval, getDay, isSameDay, add
 import { getMonthRosterRange } from '@/lib/date-utils'
 import { getValidationMonthTag, getValidationMonthsForRange } from '@/lib/validation/cache-tags'
 import { Prisma } from '@prisma/client'
+import { requireAdmin } from '@/lib/admin-auth'
 
 type EligibleStaffUser = Prisma.UserGetPayload<{
     include: {
@@ -18,6 +19,8 @@ type EligibleStaffUser = Prisma.UserGetPayload<{
 // --- Leave Actions ---
 
 export async function addLeave(data: { userId: number, startDate: string, endDate: string, reason?: string }) {
+    await requireAdmin()
+
     // 1. Delete conflicting shifts
     // CHANGED: We now KEEP shifts even if leave is approved, so we can calculate "would-be" hours for payroll.
     // await prisma.shift.deleteMany({
@@ -48,6 +51,8 @@ export async function addLeave(data: { userId: number, startDate: string, endDat
 }
 
 export async function deleteLeave(id: number) {
+    await requireAdmin()
+
     const leave = await prisma.leave.findUnique({
         where: { id },
         select: { startDate: true, endDate: true }
@@ -108,6 +113,8 @@ type SchedulerParams = {
 // --- Clear Schedule ---
 
 export async function clearSchedule(month: string) {
+    await requireAdmin()
+
     // month format: YYYY-MM
     const { startDate, endDate } = getMonthRosterRange(month)
     const startStr = startDate
@@ -128,6 +135,8 @@ export async function clearSchedule(month: string) {
 }
 
 export async function generateSchedule({ month }: SchedulerParams) {
+    await requireAdmin()
+
     const { startDate, endDate, start, end } = getMonthRosterRange(month)
     const monthStart = start
     const monthEnd = end

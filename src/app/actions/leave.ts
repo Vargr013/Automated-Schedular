@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { getValidationMonthTag, getValidationMonthsForRange } from '@/lib/validation/cache-tags'
+import { requireAdmin } from '@/lib/admin-auth'
 
 export async function createLeaveRequest(formData: FormData) {
     const userId = parseInt(formData.get('userId') as string)
@@ -18,7 +19,7 @@ export async function createLeaveRequest(formData: FormData) {
             startDate,
             endDate,
             reason,
-            leaveType: (leaveType as any) || 'UNPAID', // Cast enum if needed or validate
+            leaveType: leaveType || 'UNPAID',
             status: 'PENDING'
         }
     })
@@ -28,6 +29,8 @@ export async function createLeaveRequest(formData: FormData) {
 }
 
 export async function updateLeaveStatus(leaveId: number, status: 'APPROVED' | 'DECLINED' | 'PENDING') {
+    await requireAdmin()
+
     const leave = await prisma.leave.update({
         where: { id: leaveId },
         data: { status }
@@ -44,6 +47,8 @@ export async function updateLeaveDetails(
     leaveId: number,
     data: { startDate: string; endDate: string; reason: string; leaveType: string }
 ) {
+    await requireAdmin()
+
     const existing = await prisma.leave.findUnique({
         where: { id: leaveId },
         select: { startDate: true, endDate: true }
@@ -55,7 +60,7 @@ export async function updateLeaveDetails(
             startDate: data.startDate,
             endDate: data.endDate,
             reason: data.reason,
-            leaveType: data.leaveType as any
+            leaveType: data.leaveType
         }
     })
 
@@ -72,11 +77,10 @@ export async function updateLeaveDetails(
 
 export async function getLeaveRequests(status?: string, leaveType?: string, month?: string) {
     const where: Prisma.LeaveWhereInput = {}
-    if (status) where.status = status as any // Enum cast might be needed depending on schema
-    if (leaveType) where.leaveType = leaveType as any
+    if (status) where.status = status
+    if (leaveType) where.leaveType = leaveType
 
     if (month) {
-        const startOfMonth = `${month}-01`
         // Simple trick for end of month in string comparison: YYYY-MM-32 covers all days
         // actually just YYYY-MM-31 is enough for standard comparison, 
         // but lets use last day of month logic or just simple string compare.

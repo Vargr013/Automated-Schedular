@@ -6,6 +6,7 @@ import ExcelJS from 'exceljs'
 import { eachDayOfInterval, format, parseISO, getDay } from 'date-fns'
 import { getMonthRosterRange } from '@/lib/date-utils'
 import { getValidationMonthTag } from '@/lib/validation/cache-tags'
+import { requireAdmin } from '@/lib/admin-auth'
 import {
     DAY_COLUMN_START,
     DAY_PAIR_WIDTH,
@@ -239,6 +240,8 @@ function findMetadataShift(
 }
 
 export async function importRoster(formData: FormData): Promise<ImportReport> {
+    await requireAdmin()
+
     const file = formData.get('file') as File
     if (!file) {
         return emptyReport('No file uploaded')
@@ -513,6 +516,8 @@ export async function confirmRosterImport(
     month: string,
     coveredDates: string[] = []
 ) {
+    await requireAdmin()
+
     if ((!shifts || shifts.length === 0) && coveredDates.length === 0) return
 
     const uniqueCoveredDates = Array.from(new Set(coveredDates)).sort()

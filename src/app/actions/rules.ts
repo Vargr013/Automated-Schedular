@@ -3,6 +3,7 @@
 import prisma from '@/lib/prisma'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { VALIDATION_RULES_TAG } from '@/lib/validation/cache-tags'
+import { requireAdmin } from '@/lib/admin-auth'
 
 // --- Types ---
 export type AutomationRuleData = {
@@ -39,6 +40,8 @@ export async function getRules() {
 }
 
 export async function createRule(data: AutomationRuleData) {
+    await requireAdmin()
+
     await prisma.automationRule.create({
         data: {
             department_id: data.department_id,
@@ -57,6 +60,8 @@ export async function createRule(data: AutomationRuleData) {
 }
 
 export async function updateRule(id: number, data: AutomationRuleData) {
+    await requireAdmin()
+
     await prisma.automationRule.update({
         where: { id },
         data: {
@@ -76,6 +81,8 @@ export async function updateRule(id: number, data: AutomationRuleData) {
 }
 
 export async function deleteRule(id: number) {
+    await requireAdmin()
+
     await prisma.automationRule.delete({
         where: { id }
     })
@@ -87,6 +94,8 @@ export async function deleteRule(id: number) {
 // --- Seed Logic ---
 // Imports current hardcoded rules into DB
 export async function seedRules() {
+    await requireAdmin()
+
     const existing = await prisma.automationRule.count()
     if (existing > 0) return { success: false, message: 'Rules already exist' }
 
@@ -103,7 +112,15 @@ export async function seedRules() {
         return { success: false, message: 'Missing required departments' }
     }
 
-    const rules: any[] = []
+    const rules: Array<{
+        department_id: number
+        day_of_week: number
+        start_time: string
+        end_time: string
+        count: number
+        required_type: string | null
+        is_smod: boolean
+    }> = []
 
     // Helper to add rule
     const add = (day: number, deptId: number, start: string, end: string, count: number, type: string | null = null, smod: boolean = false) => {
@@ -161,6 +178,8 @@ export async function getBaseRules() {
 }
 
 export async function createBaseRule(formData: FormData) {
+    await requireAdmin()
+
     const user_id = Number(formData.get('user_id'))
     const template_id = Number(formData.get('template_id'))
     const day_of_week = Number(formData.get('day_of_week'))
@@ -194,6 +213,8 @@ export async function createBaseRule(formData: FormData) {
 }
 
 export async function updateBaseRule(id: number, formData: FormData) {
+    await requireAdmin()
+
     const template_id = Number(formData.get('template_id'))
 
     await prisma.userBaseRule.update({
@@ -206,6 +227,8 @@ export async function updateBaseRule(id: number, formData: FormData) {
 }
 
 export async function deleteBaseRule(id: number) {
+    await requireAdmin()
+
     await prisma.userBaseRule.delete({
         where: { id }
     })
@@ -213,6 +236,8 @@ export async function deleteBaseRule(id: number) {
 }
 
 export async function moveBaseRule(ruleId: number, newUserId: number, newDayIndex: number) {
+    await requireAdmin()
+
     const existingRule = await prisma.userBaseRule.findFirst({
         where: {
             user_id: newUserId,

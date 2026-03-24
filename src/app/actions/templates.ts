@@ -2,6 +2,7 @@
 
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import { requireAdmin } from '@/lib/admin-auth'
 
 export async function getTemplates() {
     return await prisma.shiftTemplate.findMany({
@@ -15,6 +16,8 @@ export async function getTemplates() {
 }
 
 export async function createTemplate(formData: FormData) {
+    await requireAdmin()
+
     const name = formData.get('name') as string
     const start_time = formData.get('start_time') as string
     const end_time = formData.get('end_time') as string
@@ -33,6 +36,8 @@ export async function createTemplate(formData: FormData) {
 }
 
 export async function updateTemplate(formData: FormData) {
+    await requireAdmin()
+
     const id = parseInt(formData.get('id') as string)
     const name = formData.get('name') as string
     const start_time = formData.get('start_time') as string
@@ -52,6 +57,8 @@ export async function updateTemplate(formData: FormData) {
 }
 
 export async function deleteTemplate(formData: FormData) {
+    await requireAdmin()
+
     const id = parseInt(formData.get('id') as string)
 
     await prisma.shiftTemplate.delete({

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { addDays, addWeeks, eachDayOfInterval, format, isSameDay, parseISO } from 'date-fns'
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { AlertCircle, AlertTriangle, CalendarPlus, ClipboardPaste, Copy, Pencil, Plus, Repeat, Save, Trash2, X } from 'lucide-react'
@@ -146,6 +146,9 @@ export default function RosterGrid({
     const [isGeneratingBaseSchedule, setIsGeneratingBaseSchedule] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [history, setHistory] = useState<HistoryAction[]>([])
+    const gridScrollRef = useRef<HTMLDivElement | null>(null)
+    const bottomScrollRef = useRef<HTMLDivElement | null>(null)
+    const activeScrollSyncRef = useRef<'grid' | 'bottom' | null>(null)
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -159,6 +162,7 @@ export default function RosterGrid({
         start: parseISO(startDate),
         end: parseISO(endDate)
     })
+    const rosterTableMinWidth = `${200 + daysInMonth.length * 120}px`
 
     const shiftsByCell = useMemo(() => {
         const map = new Map<string, Shift[]>()
@@ -396,6 +400,45 @@ export default function RosterGrid({
             setRepeatState(null)
         }
     }, [selectedShift])
+
+    useEffect(() => {
+        const gridScroll = gridScrollRef.current
+        const bottomScroll = bottomScrollRef.current
+        if (!gridScroll || !bottomScroll) return
+
+        bottomScroll.scrollLeft = gridScroll.scrollLeft
+    }, [rosterTableMinWidth])
+
+    const syncHorizontalScroll = (source: 'grid' | 'bottom') => {
+        const gridScroll = gridScrollRef.current
+        const bottomScroll = bottomScrollRef.current
+        if (!gridScroll || !bottomScroll) return
+
+        const sourceElement = source === 'grid' ? gridScroll : bottomScroll
+        const targetElement = source === 'grid' ? bottomScroll : gridScroll
+        const nextScrollLeft = sourceElement.scrollLeft
+
+        if (Math.abs(targetElement.scrollLeft - nextScrollLeft) < 1) return
+
+        activeScrollSyncRef.current = source
+        targetElement.scrollLeft = nextScrollLeft
+
+        requestAnimationFrame(() => {
+            if (activeScrollSyncRef.current === source) {
+                activeScrollSyncRef.current = null
+            }
+        })
+    }
+
+    const handleGridScroll = () => {
+        if (activeScrollSyncRef.current === 'bottom') return
+        syncHorizontalScroll('grid')
+    }
+
+    const handleBottomScroll = () => {
+        if (activeScrollSyncRef.current === 'grid') return
+        syncHorizontalScroll('bottom')
+    }
 
     const handleDragEnd = async (event: DragEndEvent) => {
         const { active, over } = event
@@ -1428,8 +1471,12 @@ export default function RosterGrid({
                     </div>
                 )}
 
-                <div className="roster-grid-scroll">
-                    <table className="roster-table" style={{ minWidth: `${200 + daysInMonth.length * 120}px` }}>
+                <div
+                    ref={gridScrollRef}
+                    className="roster-grid-scroll"
+                    onScroll={handleGridScroll}
+                >
+                    <table className="roster-table" style={{ minWidth: rosterTableMinWidth }}>
                         <thead>
                             <tr>
                                 <th
@@ -1552,6 +1599,14 @@ export default function RosterGrid({
                             })}
                         </tbody>
                     </table>
+                </div>
+                <div
+                    ref={bottomScrollRef}
+                    className="roster-grid-bottom-scroll"
+                    onScroll={handleBottomScroll}
+                    aria-label="Roster horizontal scrollbar"
+                >
+                    <div className="roster-grid-bottom-scroll-inner" style={{ minWidth: rosterTableMinWidth }} />
                 </div>
 
                 {repeatState && (

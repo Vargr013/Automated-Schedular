@@ -3,8 +3,8 @@
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { getShifts } from './shifts'
-import { getOperatingDays } from './calendar'
-import { format, parseISO } from 'date-fns'
+import { parseISO } from 'date-fns'
+import { requireAdmin } from '@/lib/admin-auth'
 
 export async function getBudget(month: string) {
     const budget = await prisma.monthlyBudget.findUnique({
@@ -14,6 +14,8 @@ export async function getBudget(month: string) {
 }
 
 export async function setBudget(month: string, amount: number) {
+    await requireAdmin()
+
     await prisma.monthlyBudget.upsert({
         where: { month },
         update: { budget: amount },
@@ -23,20 +25,6 @@ export async function setBudget(month: string, amount: number) {
 }
 
 export async function getCostStats(month: string) {
-    // 1. Get Data
-    const startDate = `${month}-01`
-    // Simple end date calculation (good enough for stats, better to be strict but this works for monthly scope usually)
-    // Actually, let's strictly find the end of the month
-    const d = parseISO(startDate)
-    // We need 'yyyy-MM-dd' for end of month
-    // Let's use getShifts which takes string dates
-    // But getShifts relies on string comparison.
-    // Let's just fetch all shifts that start with the month string for efficiency? 
-    // prisma.shift.findMany({ where: { date: { startsWith: month } } }) approach is cleaner if DB supports it (SQLite does)
-
-    // Fetch directly to avoid huge payload overhead of getShifts if possible, but getShifts joins departments/users which we need.
-    // let's reuse getShifts logic but strictly filter
-    // Construct end date:
     const year = parseInt(month.split('-')[0])
     const m = parseInt(month.split('-')[1])
     const lastDay = new Date(year, m, 0).getDate() // days in month
@@ -60,9 +48,9 @@ export async function getCostStats(month: string) {
 
     let totalCost = 0
     let totalHours = 0
-    let departmentCosts: Record<string, number> = {}
-    let departmentHours: Record<string, number> = {}
-    let typeCosts: Record<string, number> = {} // FULL_TIME vs PART_TIME
+    const departmentCosts: Record<string, number> = {}
+    const departmentHours: Record<string, number> = {}
+    const typeCosts: Record<string, number> = {} // FULL_TIME vs PART_TIME
 
     // Helper for Sunday
     const isSunday = (dateStr: string) => {

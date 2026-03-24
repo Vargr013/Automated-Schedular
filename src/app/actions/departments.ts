@@ -2,12 +2,15 @@
 
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import { requireAdmin } from '@/lib/admin-auth'
 
 export async function getDepartments() {
     return await prisma.department.findMany()
 }
 
 export async function createDepartment(formData: FormData) {
+    await requireAdmin()
+
     const name = formData.get('name') as string
     const color_code = formData.get('color_code') as string
 
@@ -23,6 +26,8 @@ export async function createDepartment(formData: FormData) {
 }
 
 export async function updateDepartment(formData: FormData) {
+    await requireAdmin()
+
     const id = Number(formData.get('id'))
     const name = formData.get('name') as string
     const color_code = formData.get('color_code') as string
@@ -39,6 +44,8 @@ export async function updateDepartment(formData: FormData) {
 }
 
 export async function deleteDepartment(formData: FormData) {
+    await requireAdmin()
+
     const id = Number(formData.get('id'))
     try {
         await prisma.department.delete({

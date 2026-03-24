@@ -1,12 +1,25 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import './admin.css'
 import { Users, Calendar, Grid, FileText, CalendarOff, Settings, DollarSign, ShieldAlert } from 'lucide-react'
+import { auth } from '@/auth'
 
-export default function AdminLayout({
+export default async function AdminLayout({
     children,
 }: {
     children: React.ReactNode
 }) {
+    const session = await auth()
+    const user = session?.user as { name?: string | null, email?: string | null, role?: string } | undefined
+
+    if (!user) {
+        redirect('/login')
+    }
+
+    if (user.role !== 'ADMIN') {
+        redirect('/')
+    }
+
     const primaryLinks = [
         { href: '/admin/roster', label: 'Roster', icon: Grid },
         { href: '/admin/leave', label: 'Leave', icon: CalendarOff },
@@ -15,6 +28,7 @@ export default function AdminLayout({
     ]
 
     const advancedLinks = [
+        { href: '/admin/admin-users', label: 'Admin Users', icon: ShieldAlert },
         { href: '/admin/base-schedule', label: 'Base Schedule', icon: Calendar },
         { href: '/admin/templates', label: 'Shift Templates', icon: FileText },
         { href: '/admin/rules', label: 'Automation Rules', icon: Settings },
@@ -51,6 +65,16 @@ export default function AdminLayout({
                             </li>
                         ))}
                     </ul>
+                    <div style={{ marginTop: '1.5rem', padding: '1rem 0.75rem', borderRadius: '16px', background: 'rgba(var(--primary-rgb), 0.08)', border: '1px solid var(--sidebar-border)' }}>
+                        <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted-foreground)' }}>Signed In</div>
+                        <div style={{ marginTop: '0.4rem', fontWeight: 600, color: 'var(--foreground)' }}>{user.name || user.email || 'Admin user'}</div>
+                        {user.email && (
+                            <div style={{ marginTop: '0.2rem', fontSize: '0.8rem', color: 'var(--muted-foreground)' }}>{user.email}</div>
+                        )}
+                        <div style={{ marginTop: '0.55rem', display: 'inline-flex', padding: '0.2rem 0.5rem', borderRadius: '999px', background: 'rgba(15, 23, 42, 0.08)', fontSize: '0.72rem', fontWeight: 700, color: 'var(--foreground)' }}>
+                            {user.role}
+                        </div>
+                    </div>
                     <div style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--sidebar-border)' }}>
                         <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--muted-foreground)' }}>
                             &larr; Home
