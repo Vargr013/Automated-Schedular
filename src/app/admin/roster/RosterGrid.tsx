@@ -449,6 +449,17 @@ export default function RosterGrid({
         syncHorizontalScroll('bottom')
     }
 
+    const handleRosterWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+        const isMostlyVertical = Math.abs(event.deltaY) > Math.abs(event.deltaX)
+        if (!isMostlyVertical || event.shiftKey) return
+
+        const scrollHost = event.currentTarget.closest('.admin-content') as HTMLElement | null
+        if (!scrollHost) return
+
+        scrollHost.scrollTop += event.deltaY
+        event.preventDefault()
+    }
+
     const handleDragEnd = async (event: DragEndEvent) => {
         const { active, over } = event
 
@@ -1440,6 +1451,15 @@ export default function RosterGrid({
         ))
     }
 
+    const renderRosterColumnGroup = () => (
+        <colgroup>
+            <col style={{ width: '200px' }} />
+            {daysInMonth.map((day) => (
+                <col key={format(day, 'yyyy-MM-dd')} style={{ width: '120px' }} />
+            ))}
+        </colgroup>
+    )
+
     const renderRosterHeaderRow = () => (
         <tr>
             <th
@@ -1571,6 +1591,7 @@ export default function RosterGrid({
                     aria-hidden="true"
                 >
                     <table className="roster-table" style={{ minWidth: rosterTableMinWidth }}>
+                        {renderRosterColumnGroup()}
                         <thead>
                             {renderRosterHeaderRow()}
                         </thead>
@@ -1581,8 +1602,10 @@ export default function RosterGrid({
                     ref={gridScrollRef}
                     className="roster-grid-scroll"
                     onScroll={handleGridScroll}
+                    onWheel={handleRosterWheel}
                 >
                     <table className="roster-table" style={{ minWidth: rosterTableMinWidth }}>
+                        {renderRosterColumnGroup()}
                         <tbody>
                             <tr>
                                 <td colSpan={daysInMonth.length + 1} className="roster-table-section-primary">

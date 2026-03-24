@@ -108,13 +108,13 @@
 }
 
 .roster-grid-scroll {
-  overflow: auto;
-  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 0 0 auto;
   max-width: 100vw;
   position: relative;
   isolation: isolate;
   overscroll-behavior: contain;
-  min-height: 0;
 }
 
 .roster-grid-header-scroll {
@@ -129,6 +129,9 @@
 .roster-grid-bottom-scroll {
   overflow-x: auto;
   overflow-y: hidden;
+  position: sticky;
+  bottom: 0;
+  z-index: 45;
   flex: 0 0 auto;
   height: 18px;
   background: var(--background);
