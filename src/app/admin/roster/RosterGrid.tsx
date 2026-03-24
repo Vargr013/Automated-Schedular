@@ -146,6 +146,7 @@ export default function RosterGrid({
     const [isGeneratingBaseSchedule, setIsGeneratingBaseSchedule] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [history, setHistory] = useState<HistoryAction[]>([])
+    const headerScrollRef = useRef<HTMLDivElement | null>(null)
     const gridScrollRef = useRef<HTMLDivElement | null>(null)
     const bottomScrollRef = useRef<HTMLDivElement | null>(null)
     const activeScrollSyncRef = useRef<'grid' | 'bottom' | null>(null)
@@ -402,26 +403,34 @@ export default function RosterGrid({
     }, [selectedShift])
 
     useEffect(() => {
+        const headerScroll = headerScrollRef.current
         const gridScroll = gridScrollRef.current
         const bottomScroll = bottomScrollRef.current
-        if (!gridScroll || !bottomScroll) return
+        if (!gridScroll || !bottomScroll || !headerScroll) return
 
+        headerScroll.scrollLeft = gridScroll.scrollLeft
         bottomScroll.scrollLeft = gridScroll.scrollLeft
     }, [rosterTableMinWidth])
 
     const syncHorizontalScroll = (source: 'grid' | 'bottom') => {
+        const headerScroll = headerScrollRef.current
         const gridScroll = gridScrollRef.current
         const bottomScroll = bottomScrollRef.current
-        if (!gridScroll || !bottomScroll) return
+        if (!gridScroll || !bottomScroll || !headerScroll) return
 
         const sourceElement = source === 'grid' ? gridScroll : bottomScroll
-        const targetElement = source === 'grid' ? bottomScroll : gridScroll
         const nextScrollLeft = sourceElement.scrollLeft
+        const targetElements = source === 'grid'
+            ? [bottomScroll, headerScroll]
+            : [gridScroll, headerScroll]
 
-        if (Math.abs(targetElement.scrollLeft - nextScrollLeft) < 1) return
+        const shouldSync = targetElements.some((targetElement) => Math.abs(targetElement.scrollLeft - nextScrollLeft) >= 1)
+        if (!shouldSync) return
 
         activeScrollSyncRef.current = source
-        targetElement.scrollLeft = nextScrollLeft
+        targetElements.forEach((targetElement) => {
+            targetElement.scrollLeft = nextScrollLeft
+        })
 
         requestAnimationFrame(() => {
             if (activeScrollSyncRef.current === source) {
@@ -1269,7 +1278,9 @@ export default function RosterGrid({
                                 borderRight: '1px solid var(--border)',
                                 position: 'relative',
                                 padding: 0,
-                                verticalAlign: 'top'
+                                verticalAlign: 'top',
+                                minWidth: '120px',
+                                width: '120px'
                             }}
                         >
                             <DroppableCell
@@ -1429,6 +1440,89 @@ export default function RosterGrid({
         ))
     }
 
+    const renderRosterHeaderRow = () => (
+        <tr>
+            <th
+                className="roster-table-staff roster-staff-header"
+                style={{
+                    padding: '1rem',
+                    fontWeight: '600',
+                    borderBottom: '1px solid var(--border)',
+                    borderRight: '1px solid var(--border)',
+                    color: 'var(--foreground)',
+                    top: 0
+                }}
+            >
+                Staff Member
+            </th>
+            {daysInMonth.map((day) => {
+                const dateStr = format(day, 'yyyy-MM-dd')
+                const status = getDayStatus(dateStr)
+                const isHoliday = status?.status === 'HOLIDAY'
+                const isClosed = status?.status === 'CLOSED'
+                const isWeekend = day.getDay() === 0 || day.getDay() === 6
+                const isToday = isSameDay(day, new Date())
+                const dayViolations = (violationsByDate.get(dateStr) || []).filter((violation) => violation.type === 'UNDERSTAFFED')
+                const dayViolationMessages = dayViolations.map((violation) => violation.message).join('\n')
+
+                return (
+                    <th
+                        key={dateStr}
+                        className="roster-table-day"
+                        style={{
+                            padding: '0.75rem',
+                            textAlign: 'center',
+                            borderBottom: '1px solid var(--border)',
+                            borderRight: '1px solid var(--border)',
+                            backgroundColor: isToday
+                                ? 'rgba(var(--primary-rgb), 0.12)'
+                                : isHoliday
+                                    ? 'rgba(239, 68, 68, 0.1)'
+                                    : isClosed
+                                        ? 'var(--muted)'
+                                        : isWeekend
+                                            ? 'rgba(148, 163, 184, 0.08)'
+                                            : 'var(--background)',
+                            color: isHoliday ? 'var(--destructive)' : 'var(--foreground)',
+                            minWidth: '120px',
+                            top: 0,
+                            boxShadow: isToday ? 'inset 0 -2px 0 rgba(var(--primary-rgb), 0.45)' : 'none'
+                        }}
+                    >
+                        <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.7 }}>{format(day, 'EEE')}</div>
+                        <div style={{ fontSize: '1.125rem', fontWeight: '600' }}>{format(day, 'd')}</div>
+                        <div style={{ fontSize: '0.65rem', marginTop: '0.3rem', color: 'var(--muted-foreground)' }}>
+                            {shiftsPerDay[dateStr] || 0} shifts
+                            {approvedLeavePerDay[dateStr] ? ` | ${approvedLeavePerDay[dateStr]} leave` : ''}
+                        </div>
+                        {alertCountPerDay[dateStr] ? (
+                            <div
+                                title={dayViolationMessages}
+                                style={{
+                                    marginTop: '0.35rem',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    padding: '0.2rem 0.45rem',
+                                    borderRadius: '999px',
+                                    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                                    color: '#b45309',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    cursor: 'help'
+                                }}
+                            >
+                                <AlertCircle size={11} />
+                                {alertCountPerDay[dateStr]} staffing gap{alertCountPerDay[dateStr] === 1 ? '' : 's'}
+                            </div>
+                        ) : null}
+                        {status?.event_note && <div style={{ fontSize: '0.65rem', marginTop: '2px', fontWeight: '500' }}>{status.event_note}</div>}
+                    </th>
+                )
+            })}
+        </tr>
+    )
+
     return (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
             <div className="card" style={{ padding: 0, overflow: 'visible', display: 'flex', flexDirection: 'column', flex: 1 }}>
@@ -1472,93 +1566,23 @@ export default function RosterGrid({
                 )}
 
                 <div
+                    ref={headerScrollRef}
+                    className="roster-grid-header-scroll"
+                    aria-hidden="true"
+                >
+                    <table className="roster-table" style={{ minWidth: rosterTableMinWidth }}>
+                        <thead>
+                            {renderRosterHeaderRow()}
+                        </thead>
+                    </table>
+                </div>
+
+                <div
                     ref={gridScrollRef}
                     className="roster-grid-scroll"
                     onScroll={handleGridScroll}
                 >
                     <table className="roster-table" style={{ minWidth: rosterTableMinWidth }}>
-                        <thead>
-                            <tr>
-                                <th
-                                    className="roster-table-staff roster-staff-header"
-                                    style={{
-                                        padding: '1rem',
-                                        fontWeight: '600',
-                                        borderBottom: '1px solid var(--border)',
-                                        borderRight: '1px solid var(--border)',
-                                        color: 'var(--foreground)',
-                                        top: 0
-                                    }}
-                                >
-                                    Staff Member
-                                </th>
-                                {daysInMonth.map((day) => {
-                                    const dateStr = format(day, 'yyyy-MM-dd')
-                                    const status = getDayStatus(dateStr)
-                                    const isHoliday = status?.status === 'HOLIDAY'
-                                    const isClosed = status?.status === 'CLOSED'
-                                    const isWeekend = day.getDay() === 0 || day.getDay() === 6
-                                    const isToday = isSameDay(day, new Date())
-                                    const dayViolations = (violationsByDate.get(dateStr) || []).filter((violation) => violation.type === 'UNDERSTAFFED')
-                                    const dayViolationMessages = dayViolations.map((violation) => violation.message).join('\n')
-
-                                    return (
-                                        <th
-                                            key={dateStr}
-                                            className="roster-table-day"
-                                            style={{
-                                                padding: '0.75rem',
-                                                textAlign: 'center',
-                                                borderBottom: '1px solid var(--border)',
-                                                borderRight: '1px solid var(--border)',
-                                                backgroundColor: isToday
-                                                    ? 'rgba(var(--primary-rgb), 0.12)'
-                                                    : isHoliday
-                                                        ? 'rgba(239, 68, 68, 0.1)'
-                                                        : isClosed
-                                                            ? 'var(--muted)'
-                                                            : isWeekend
-                                                                ? 'rgba(148, 163, 184, 0.08)'
-                                                                : 'var(--background)',
-                                                color: isHoliday ? 'var(--destructive)' : 'var(--foreground)',
-                                                minWidth: '120px',
-                                                top: 0,
-                                                boxShadow: isToday ? 'inset 0 -2px 0 rgba(var(--primary-rgb), 0.45)' : 'none'
-                                            }}
-                                        >
-                                            <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.7 }}>{format(day, 'EEE')}</div>
-                                            <div style={{ fontSize: '1.125rem', fontWeight: '600' }}>{format(day, 'd')}</div>
-                                            <div style={{ fontSize: '0.65rem', marginTop: '0.3rem', color: 'var(--muted-foreground)' }}>
-                                                {shiftsPerDay[dateStr] || 0} shifts
-                                                {approvedLeavePerDay[dateStr] ? ` | ${approvedLeavePerDay[dateStr]} leave` : ''}
-                                            </div>
-                                            {alertCountPerDay[dateStr] ? (
-                                                <div
-                                                    title={dayViolationMessages}
-                                                    style={{
-                                                        marginTop: '0.35rem',
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        gap: '0.3rem',
-                                                        padding: '0.2rem 0.45rem',
-                                                        borderRadius: '999px',
-                                                        backgroundColor: 'rgba(245, 158, 11, 0.14)',
-                                                        color: '#b45309',
-                                                        fontSize: '0.68rem',
-                                                        fontWeight: 700,
-                                                        cursor: 'help'
-                                                    }}
-                                                >
-                                                    <AlertCircle size={11} />
-                                                    {alertCountPerDay[dateStr]} staffing gap{alertCountPerDay[dateStr] === 1 ? '' : 's'}
-                                                </div>
-                                            ) : null}
-                                            {status?.event_note && <div style={{ fontSize: '0.65rem', marginTop: '2px', fontWeight: '500' }}>{status.event_note}</div>}
-                                        </th>
-                                    )
-                                })}
-                            </tr>
-                        </thead>
                         <tbody>
                             <tr>
                                 <td colSpan={daysInMonth.length + 1} className="roster-table-section-primary">
