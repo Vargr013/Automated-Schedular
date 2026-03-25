@@ -211,15 +211,15 @@
 }
 
 .admin-content:has(.roster-page-shell) {
-  --roster-shell-offset: 16px;
+  --roster-shell-offset: 5px;
   --roster-bottom-trim: 0px;
-  padding-bottom: 0.25rem;
+  padding-bottom: 0.08rem;
 }
 
 @media (max-height: 900px) {
   .admin-content:has(.roster-page-shell) {
-    --roster-shell-offset: 8px;
-    padding-bottom: 0.125rem;
+    --roster-shell-offset: 3px;
+    padding-bottom: 0.04rem;
   }
 }
 
