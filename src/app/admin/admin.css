@@ -211,20 +211,21 @@
 }
 
 .admin-content:has(.roster-page-shell) {
-  --roster-bottom-trim: -1.5rem;
-  padding-bottom: 0.5rem;
+  --roster-shell-offset: 16px;
+  --roster-bottom-trim: 0px;
+  padding-bottom: 0.25rem;
 }
 
 @media (max-height: 900px) {
   .admin-content:has(.roster-page-shell) {
-    --roster-bottom-trim: -1.75rem;
-    padding-bottom: 0.25rem;
+    --roster-shell-offset: 8px;
+    padding-bottom: 0.125rem;
   }
 }
 
 @media (max-height: 760px) {
   .admin-content:has(.roster-page-shell) {
-    --roster-bottom-trim: -2rem;
+    --roster-shell-offset: 0px;
     padding-bottom: 0;
   }
 }
