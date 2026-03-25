@@ -146,7 +146,6 @@ export default function RosterGrid({
     const [isGeneratingBaseSchedule, setIsGeneratingBaseSchedule] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [history, setHistory] = useState<HistoryAction[]>([])
-    const headerScrollRef = useRef<HTMLDivElement | null>(null)
     const gridScrollRef = useRef<HTMLDivElement | null>(null)
     const bottomScrollRef = useRef<HTMLDivElement | null>(null)
     const activeScrollSyncRef = useRef<'grid' | 'bottom' | null>(null)
@@ -403,34 +402,26 @@ export default function RosterGrid({
     }, [selectedShift])
 
     useEffect(() => {
-        const headerScroll = headerScrollRef.current
         const gridScroll = gridScrollRef.current
         const bottomScroll = bottomScrollRef.current
-        if (!gridScroll || !bottomScroll || !headerScroll) return
+        if (!gridScroll || !bottomScroll) return
 
-        headerScroll.scrollLeft = gridScroll.scrollLeft
         bottomScroll.scrollLeft = gridScroll.scrollLeft
     }, [rosterTableMinWidth])
 
     const syncHorizontalScroll = (source: 'grid' | 'bottom') => {
-        const headerScroll = headerScrollRef.current
         const gridScroll = gridScrollRef.current
         const bottomScroll = bottomScrollRef.current
-        if (!gridScroll || !bottomScroll || !headerScroll) return
+        if (!gridScroll || !bottomScroll) return
 
         const sourceElement = source === 'grid' ? gridScroll : bottomScroll
         const nextScrollLeft = sourceElement.scrollLeft
-        const targetElements = source === 'grid'
-            ? [bottomScroll, headerScroll]
-            : [gridScroll, headerScroll]
+        const targetElement = source === 'grid' ? bottomScroll : gridScroll
 
-        const shouldSync = targetElements.some((targetElement) => Math.abs(targetElement.scrollLeft - nextScrollLeft) >= 1)
-        if (!shouldSync) return
+        if (Math.abs(targetElement.scrollLeft - nextScrollLeft) < 1) return
 
         activeScrollSyncRef.current = source
-        targetElements.forEach((targetElement) => {
-            targetElement.scrollLeft = nextScrollLeft
-        })
+        targetElement.scrollLeft = nextScrollLeft
 
         requestAnimationFrame(() => {
             if (activeScrollSyncRef.current === source) {
@@ -447,17 +438,6 @@ export default function RosterGrid({
     const handleBottomScroll = () => {
         if (activeScrollSyncRef.current === 'grid') return
         syncHorizontalScroll('bottom')
-    }
-
-    const handleRosterWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-        const isMostlyVertical = Math.abs(event.deltaY) > Math.abs(event.deltaX)
-        if (!isMostlyVertical || event.shiftKey) return
-
-        const scrollHost = event.currentTarget.closest('.admin-content') as HTMLElement | null
-        if (!scrollHost) return
-
-        scrollHost.scrollTop += event.deltaY
-        event.preventDefault()
     }
 
     const handleDragEnd = async (event: DragEndEvent) => {
@@ -1545,7 +1525,7 @@ export default function RosterGrid({
 
     return (
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-            <div className="card" style={{ padding: 0, overflow: 'visible', display: 'flex', flexDirection: 'column', flex: 1 }}>
+            <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0 }}>
                 {(copiedShift || selectedCell) && (
                     <div style={{
                         display: 'flex',
@@ -1586,26 +1566,15 @@ export default function RosterGrid({
                 )}
 
                 <div
-                    ref={headerScrollRef}
-                    className="roster-grid-header-scroll"
-                    aria-hidden="true"
+                    ref={gridScrollRef}
+                    className="roster-grid-scroll"
+                    onScroll={handleGridScroll}
                 >
                     <table className="roster-table" style={{ minWidth: rosterTableMinWidth }}>
                         {renderRosterColumnGroup()}
                         <thead>
                             {renderRosterHeaderRow()}
                         </thead>
-                    </table>
-                </div>
-
-                <div
-                    ref={gridScrollRef}
-                    className="roster-grid-scroll"
-                    onScroll={handleGridScroll}
-                    onWheel={handleRosterWheel}
-                >
-                    <table className="roster-table" style={{ minWidth: rosterTableMinWidth }}>
-                        {renderRosterColumnGroup()}
                         <tbody>
                             <tr>
                                 <td colSpan={daysInMonth.length + 1} className="roster-table-section-primary">

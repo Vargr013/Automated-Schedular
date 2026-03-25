@@ -45,8 +45,8 @@ export default async function RosterPage({
     const rosterWarnings = violations as RosterWarning[]
 
     return (
-        <div style={{ height: 'calc(100vh - 40px)', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ marginBottom: '20px' }}>
+        <div style={{ height: 'calc(100vh - 40px)', display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+            <div style={{ marginBottom: '20px', flex: '0 0 auto' }}>
                 <div className="roster-toolbar" style={{ marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                         <div>
@@ -102,17 +102,19 @@ export default async function RosterPage({
                 </div>
             </div>
 
-            <RosterGrid
-                users={users}
-                departments={departments}
-                shifts={shifts}
-                operatingDays={operatingDays}
-                violations={rosterWarnings}
-                leaves={leaves}
-                startDate={startDate}
-                endDate={endDate}
-                currentMonth={currentMonth}
-            />
+            <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', display: 'flex' }}>
+                <RosterGrid
+                    users={users}
+                    departments={departments}
+                    shifts={shifts}
+                    operatingDays={operatingDays}
+                    violations={rosterWarnings}
+                    leaves={leaves}
+                    startDate={startDate}
+                    endDate={endDate}
+                    currentMonth={currentMonth}
+                />
+            </div>
         </div >
     )
 }
