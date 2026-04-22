@@ -41,7 +41,9 @@ export default async function AdminLayout({
             <aside className="admin-sidebar">
                 <AdminSidebarState />
                 <details className="admin-sidebar-panel" open>
-                    <summary className="admin-sidebar-summary">Admin Menu</summary>
+                    <summary className="admin-sidebar-summary">
+                        <span className="admin-sidebar-summary-text">Admin Menu</span>
+                    </summary>
                     <div className="admin-sidebar-body">
                         <div style={{ paddingLeft: '0.75rem' }}>
                             <h2 style={{ paddingLeft: 0, fontSize: '1.5rem', fontWeight: '700', letterSpacing: '-0.05em' }}>Scheduler<span style={{ color: 'var(--primary)' }}>.</span></h2>
