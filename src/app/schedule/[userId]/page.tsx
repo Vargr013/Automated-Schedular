@@ -2,6 +2,7 @@ import { getUser } from '@/app/actions/users'
 import { getUserShifts as fetchUserShifts } from '@/app/actions/shifts'
 import { getUserLeaveRequests } from '@/app/actions/leave'
 import { isMonthPublished } from '@/app/actions/publish'
+import { getOperatingDaysForRange } from '@/app/actions/calendar'
 import { format, startOfMonth, endOfMonth, parseISO, isSameDay, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameWeek } from 'date-fns'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -33,6 +34,12 @@ export default async function PersonalSchedulePage({
     const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd')
 
     const isPublished = await isMonthPublished(currentMonth)
+    const operatingDays = await getOperatingDaysForRange(startDate, endDate)
+    const markedHolidayDates = new Set(
+        operatingDays
+            .filter((day) => day.status === 'HOLIDAY')
+            .map((day) => day.date)
+    )
 
     // Only fetch shifts if published or if viewing a past month (optional, but let's stick to strict publishing for "Activate")
     // Use empty array if not published
@@ -145,10 +152,11 @@ export default async function PersonalSchedulePage({
                             const start = parseISO(`${s.date}T${s.start_time}`)
                             const end = parseISO(`${s.date}T${s.end_time}`)
                             const rawHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60)
-                            return acc + (rawHours * getMultiplier(s.date))
+                            const multiplier = markedHolidayDates.has(s.date) ? 2.0 : getMultiplier(s.date)
+                            return acc + (rawHours * multiplier)
                         }, 0).toFixed(1)} hrs <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>(weighted)</span>
                     </span>
-                    {shifts.some((s: any) => getMultiplier(s.date) > 1) && (
+                    {shifts.some((s: any) => (markedHolidayDates.has(s.date) ? 2.0 : getMultiplier(s.date)) > 1) && (
                         <span style={{ fontSize: '0.65rem', fontWeight: 'normal', color: 'var(--muted-foreground)' }}>
                             incl. Sun (1.5x) & Holidays (2x)
                         </span>

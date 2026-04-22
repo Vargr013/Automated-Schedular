@@ -10,6 +10,10 @@ type User = ExportUser & {
 
 type Shift = ExportShift
 type Leave = ExportLeave
+type OperatingDay = {
+    date: string
+    status: string
+}
 
 const TEMPLATE_URL = '/roster-template.xlsx'
 
@@ -17,11 +21,13 @@ export default function EnhancedExcelButton({
     users,
     shifts,
     leaves,
+    operatingDays,
     currentMonth
 }: {
     users: User[]
     shifts: Shift[]
     leaves: Leave[]
+    operatingDays: OperatingDay[]
     currentMonth: string
 }) {
     const [isExporting, setIsExporting] = useState(false)
@@ -46,7 +52,10 @@ export default function EnhancedExcelButton({
                 users,
                 shifts,
                 leaves,
-                currentMonth
+                currentMonth,
+                markedHolidayDates: operatingDays
+                    .filter((day) => day.status === 'HOLIDAY')
+                    .map((day) => day.date)
             })
 
             const buffer = await workbook.xlsx.writeBuffer()

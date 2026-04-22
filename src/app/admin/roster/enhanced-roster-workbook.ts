@@ -422,7 +422,8 @@ export async function buildEnhancedRosterWorkbook({
     users,
     shifts,
     leaves,
-    currentMonth
+    currentMonth,
+    markedHolidayDates
 }: {
     ExcelJS: ExcelJSModule
     templateBuffer: ArrayBuffer | Buffer
@@ -430,6 +431,7 @@ export async function buildEnhancedRosterWorkbook({
     shifts: Shift[]
     leaves: ExportLeave[]
     currentMonth: string
+    markedHolidayDates?: string[]
 }) {
     const templateWorkbook = new ExcelJS.Workbook()
     const workbookInput = templateBuffer instanceof ArrayBuffer ? new Uint8Array(templateBuffer) : templateBuffer
@@ -449,7 +451,8 @@ export async function buildEnhancedRosterWorkbook({
         users,
         shifts,
         leaves,
-        currentMonth
+        currentMonth,
+        markedHolidayDates
     })
 
     const allDays = model.weeks.flatMap((week) => week.days)

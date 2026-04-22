@@ -96,7 +96,13 @@ export default async function RosterPage({
                     <div className="roster-action-group">
                         <ClearScheduleButton currentMonth={currentMonth} />
                         <EnhancedPdfButton currentMonth={currentMonth} />
-                        <EnhancedExcelButton users={users} shifts={shifts} leaves={leaves} currentMonth={currentMonth} />
+                        <EnhancedExcelButton
+                            users={users}
+                            shifts={shifts}
+                            leaves={leaves}
+                            operatingDays={operatingDays}
+                            currentMonth={currentMonth}
+                        />
                         <RosterImportButton currentMonth={currentMonth} />
                     </div>
                 </div>

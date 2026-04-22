@@ -133,16 +133,19 @@ export function buildRosterExportModel({
     users,
     shifts,
     leaves,
-    currentMonth
+    currentMonth,
+    markedHolidayDates
 }: {
     users: ExportUser[]
     shifts: ExportShift[]
     leaves: ExportLeave[]
     currentMonth: string
+    markedHolidayDates?: string[]
 }): RosterExportModel {
     const monthDate = parseISO(`${currentMonth}-01`)
     const { start, end } = getMonthRosterRange(currentMonth)
     const weeks: WeekBlock[] = []
+    const markedHolidayDateSet = new Set(markedHolidayDates || [])
 
     const shiftsByDate = new Map<string, ExportShift[]>()
     const shiftsByUserDate = new Map<string, ExportShift[]>()
@@ -204,7 +207,7 @@ export function buildRosterExportModel({
                     endTime: shift?.end_time || '',
                     departmentColor: shift?.department.color_code || null,
                     onLeave,
-                    isHoliday: isPublicHoliday(dateStr),
+                    isHoliday: markedHolidayDateSet.has(dateStr) || isPublicHoliday(dateStr),
                     isInMonth: isSameMonth(day, monthDate)
                 }
             })
