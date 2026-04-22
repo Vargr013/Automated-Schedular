@@ -1475,13 +1475,13 @@ export default function RosterGrid({
                             borderBottom: '1px solid var(--border)',
                             borderRight: '1px solid var(--border)',
                             backgroundColor: isToday
-                                ? 'rgba(var(--primary-rgb), 0.12)'
+                                ? 'rgb(var(--primary-rgb))'
                                 : isHoliday
-                                    ? 'rgba(239, 68, 68, 0.1)'
+                                    ? 'rgb(58, 18, 29)'
                                     : isClosed
                                         ? 'var(--muted)'
                                         : isWeekend
-                                            ? 'rgba(148, 163, 184, 0.08)'
+                                            ? 'rgb(24, 32, 46)'
                                             : 'var(--background)',
                             color: isHoliday ? 'var(--destructive)' : 'var(--foreground)',
                             minWidth: '120px',
