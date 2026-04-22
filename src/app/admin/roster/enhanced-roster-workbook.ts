@@ -304,7 +304,9 @@ function getShiftHours(startTime: string, endTime: string) {
 function getTotalHours(row: WeekUserRow, isPartTime: boolean) {
     return row.dayCells.reduce((sum, dayCell, dayIndex) => {
         if (!dayCell.startTime || !dayCell.endTime) return sum
-        const multiplier = isPartTime && dayIndex === 6 ? 1.5 : 1
+        const multiplier = dayCell.isHoliday
+            ? 2
+            : (isPartTime && dayIndex === 6 ? 1.5 : 1)
         return sum + (getShiftHours(dayCell.startTime, dayCell.endTime) * multiplier)
     }, 0)
 }
