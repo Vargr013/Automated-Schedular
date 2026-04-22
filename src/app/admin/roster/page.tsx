@@ -40,7 +40,6 @@ export default async function RosterPage({
         getOperatingDaysForRange(payrollStartDate, payrollEndDate)
     ])
 
-    const approvedLeaves = leaves.filter((leave) => leave.status === 'APPROVED')
     const openDays = payrollOperatingDays.filter((day) => day.status === 'OPEN').length
     const closedDays = payrollOperatingDays.filter((day) => day.status === 'CLOSED').length
     const holidayDays = payrollOperatingDays.filter((day) => day.status === 'HOLIDAY').length
@@ -63,29 +62,6 @@ export default async function RosterPage({
                         <PublishButton currentMonth={currentMonth} />
                         <GenerateButton currentMonth={currentMonth} />
                         <AutoSchedulerModal currentMonth={currentMonth} />
-                    </div>
-                </div>
-
-                <div className="roster-summary-grid">
-                    <div className="roster-summary-card">
-                        <div className="roster-summary-label">Shift Coverage</div>
-                        <div className="roster-summary-value">{shifts.length}</div>
-                        <div className="roster-summary-note">Scheduled shifts in the visible roster window.</div>
-                    </div>
-                    <div className="roster-summary-card">
-                        <div className="roster-summary-label">Staff In Roster</div>
-                        <div className="roster-summary-value">{users.length}</div>
-                        <div className="roster-summary-note">People available to schedule this month.</div>
-                    </div>
-                    <div className="roster-summary-card">
-                        <div className="roster-summary-label">Approved Leave</div>
-                        <div className="roster-summary-value">{approvedLeaves.length}</div>
-                        <div className="roster-summary-note">Leave requests already affecting availability.</div>
-                    </div>
-                    <div className="roster-summary-card">
-                        <div className="roster-summary-label">Roster Alerts</div>
-                        <div className="roster-summary-value">{rosterWarnings.length}</div>
-                        <div className="roster-summary-note">Leave conflicts and staffing gaps currently visible on the roster.</div>
                     </div>
                 </div>
 
