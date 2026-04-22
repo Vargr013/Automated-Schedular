@@ -41,9 +41,9 @@ export default async function RosterPage({
     ])
 
     const approvedLeaves = leaves.filter((leave) => leave.status === 'APPROVED')
-    const openDays = operatingDays.filter((day) => day.status === 'OPEN').length
-    const closedDays = operatingDays.filter((day) => day.status === 'CLOSED').length
-    const holidayDays = operatingDays.filter((day) => day.status === 'HOLIDAY').length
+    const openDays = payrollOperatingDays.filter((day) => day.status === 'OPEN').length
+    const closedDays = payrollOperatingDays.filter((day) => day.status === 'CLOSED').length
+    const holidayDays = payrollOperatingDays.filter((day) => day.status === 'HOLIDAY').length
     const rosterWarnings = violations as RosterWarning[]
 
     return (
