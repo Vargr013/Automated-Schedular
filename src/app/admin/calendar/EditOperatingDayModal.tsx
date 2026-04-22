@@ -15,6 +15,7 @@ type OperatingDay = {
 export default function EditOperatingDayModal({ day }: { day: OperatingDay }) {
     const [isOpen, setIsOpen] = useState(false)
     const [status, setStatus] = useState(day.status)
+    const [useCustomHours, setUseCustomHours] = useState(Boolean(day.open_time && day.close_time))
 
     if (!isOpen) {
         return (
@@ -41,6 +42,10 @@ export default function EditOperatingDayModal({ day }: { day: OperatingDay }) {
                 </div>
 
                 <form action={async (formData) => {
+                    if (!useCustomHours) {
+                        formData.set('open_time', '')
+                        formData.set('close_time', '')
+                    }
                     await updateOperatingDay(formData)
                     setIsOpen(false)
                 }}>
@@ -54,8 +59,7 @@ export default function EditOperatingDayModal({ day }: { day: OperatingDay }) {
                             value={status}
                             onChange={(e) => setStatus(e.target.value)}
                         >
-                            <option value="OPEN">Open (Standard)</option>
-                            <option value="holx">Hybrid/Special</option>
+                            <option value="OPEN">Open / Hybrid / Special</option>
                             <option value="HOLIDAY">Holiday (Closed/Premium)</option>
                             <option value="CLOSED">Closed</option>
                         </select>
@@ -66,18 +70,39 @@ export default function EditOperatingDayModal({ day }: { day: OperatingDay }) {
                         <input name="event_note" className="input" defaultValue={day.event_note || ''} placeholder="e.g. Christmas Day" />
                     </div>
 
-                    {status !== 'CLOSED' && status !== 'HOLIDAY' && (
-                        <div style={{ display: 'flex', gap: '1rem' }}>
-                            <div className="form-group" style={{ flex: 1 }}>
-                                <label>Open Time</label>
-                                <input name="open_time" type="time" className="input" defaultValue={day.open_time || ''} />
-                            </div>
-                            <div className="form-group" style={{ flex: 1 }}>
-                                <label>Close Time</label>
-                                <input name="close_time" type="time" className="input" defaultValue={day.close_time || ''} />
-                            </div>
+                    <div style={{ marginBottom: '0.75rem' }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                            <input
+                                type="checkbox"
+                                checked={useCustomHours}
+                                onChange={(e) => setUseCustomHours(e.target.checked)}
+                            />
+                            Override hours for this assigned day
+                        </label>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '1rem', opacity: useCustomHours ? 1 : 0.6 }}>
+                        <div className="form-group" style={{ flex: 1 }}>
+                            <label>Open Time</label>
+                            <input
+                                name="open_time"
+                                type="time"
+                                className="input"
+                                defaultValue={day.open_time || ''}
+                                disabled={!useCustomHours}
+                            />
                         </div>
-                    )}
+                        <div className="form-group" style={{ flex: 1 }}>
+                            <label>Close Time</label>
+                            <input
+                                name="close_time"
+                                type="time"
+                                className="input"
+                                defaultValue={day.close_time || ''}
+                                disabled={!useCustomHours}
+                            />
+                        </div>
+                    </div>
 
                     <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
                         <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setIsOpen(false)}>Cancel</button>
