@@ -46,8 +46,8 @@ export default async function RosterPage({
     const rosterWarnings = violations as RosterWarning[]
 
     return (
-        <div className="roster-page-shell" style={{ height: 'calc(100dvh - var(--roster-shell-offset, 16px))', display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden', marginBottom: 'var(--roster-bottom-trim, 0px)' }}>
-            <div style={{ marginBottom: '20px', flex: '0 0 auto' }}>
+        <div className="roster-page-shell" style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+            <div style={{ marginBottom: '0.75rem', flex: '0 0 auto' }}>
                 <div className="roster-toolbar" style={{ marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                         <div>

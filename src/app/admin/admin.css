@@ -299,23 +299,15 @@
 }
 
 .admin-content:has(.roster-page-shell) {
-  --roster-shell-offset: 5px;
-  --roster-bottom-trim: 0px;
-  padding-bottom: 0.08rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1rem;
 }
 
-@media (max-height: 900px) {
-  .admin-content:has(.roster-page-shell) {
-    --roster-shell-offset: 3px;
-    padding-bottom: 0.04rem;
-  }
-}
-
-@media (max-height: 760px) {
-  .admin-content:has(.roster-page-shell) {
-    --roster-shell-offset: 0px;
-    padding-bottom: 0;
-  }
+.admin-content:has(.roster-page-shell) .roster-page-shell {
+  flex: 1;
+  min-height: 0;
 }
 
 /* Tables */
