@@ -13,7 +13,7 @@ import EnhancedPdfButton from './EnhancedPdfButton'
 import PublishButton from './PublishButton'
 import EnhancedExcelButton from './EnhancedExcelButton'
 import RosterImportButton from './RosterImportButton'
-import { getMonthRosterRange } from '@/lib/date-utils'
+import { getMonthRosterRange, getPayrollCycleRange } from '@/lib/date-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,17 +25,19 @@ export default async function RosterPage({
     const params = await searchParams
     const currentMonth = params.month || new Date().toISOString().slice(0, 7) // YYYY-MM
 
-    // Calculate start and end dates for the selected month
-    // Calculate start and end dates for the selected month using full weeks
     const { startDate, endDate } = getMonthRosterRange(currentMonth)
+    const { startDate: payrollStartDate, endDate: payrollEndDate } = getPayrollCycleRange(currentMonth)
 
-    const [users, departments, shifts, operatingDays, violations, leaves] = await Promise.all([
+    const [users, departments, shifts, operatingDays, violations, leaves, payrollShifts, payrollLeaves, payrollOperatingDays] = await Promise.all([
         getUsers(),
         getDepartments(),
         getShifts(startDate, endDate),
         getOperatingDaysForRange(startDate, endDate),
         validateMonth(currentMonth),
-        getLeavesForRange(startDate, endDate)
+        getLeavesForRange(startDate, endDate),
+        getShifts(payrollStartDate, payrollEndDate),
+        getLeavesForRange(payrollStartDate, payrollEndDate),
+        getOperatingDaysForRange(payrollStartDate, payrollEndDate)
     ])
 
     const approvedLeaves = leaves.filter((leave) => leave.status === 'APPROVED')
@@ -89,6 +91,7 @@ export default async function RosterPage({
 
                 <div className="roster-toolbar">
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>
+                        <span>Payroll cycle: {payrollStartDate} to {payrollEndDate}</span>
                         <span>{openDays} open days</span>
                         <span>{closedDays} closed days</span>
                         <span>{holidayDays} holidays</span>
@@ -98,9 +101,9 @@ export default async function RosterPage({
                         <EnhancedPdfButton currentMonth={currentMonth} />
                         <EnhancedExcelButton
                             users={users}
-                            shifts={shifts}
-                            leaves={leaves}
-                            operatingDays={operatingDays}
+                            shifts={payrollShifts}
+                            leaves={payrollLeaves}
+                            operatingDays={payrollOperatingDays}
                             currentMonth={currentMonth}
                         />
                         <RosterImportButton currentMonth={currentMonth} />

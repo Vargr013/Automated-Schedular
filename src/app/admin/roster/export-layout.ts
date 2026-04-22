@@ -1,5 +1,5 @@
 import { addDays, eachDayOfInterval, endOfWeek, format, isSameMonth, parseISO } from 'date-fns'
-import { getMonthRosterRange } from '@/lib/date-utils'
+import { getPayrollCycleRange } from '@/lib/date-utils'
 import { isPublicHoliday } from '@/lib/holidays'
 
 export const CATEGORY_ORDER = ['Management', 'Shift Manager', 'Cafe', 'Shop', 'Front Desk'] as const
@@ -143,7 +143,7 @@ export function buildRosterExportModel({
     markedHolidayDates?: string[]
 }): RosterExportModel {
     const monthDate = parseISO(`${currentMonth}-01`)
-    const { start, end } = getMonthRosterRange(currentMonth)
+    const { start, end } = getPayrollCycleRange(currentMonth)
     const weeks: WeekBlock[] = []
     const markedHolidayDateSet = new Set(markedHolidayDates || [])
 
@@ -277,7 +277,7 @@ export function buildRosterExportModel({
 
     return {
         monthDate,
-        monthTitle: format(monthDate, 'MMMM yyyy'),
+        monthTitle: `Payroll ${format(start, 'd MMM')} - ${format(end, 'd MMM yyyy')}`,
         weeks
     }
 }

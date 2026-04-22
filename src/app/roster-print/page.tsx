@@ -3,7 +3,7 @@ import { getShifts } from '@/app/actions/shifts'
 import { getUsers } from '@/app/actions/users'
 import RosterPrintDocument, { buildRosterPrintModel } from '@/app/admin/roster/RosterPrintDocument'
 import styles from '@/app/admin/roster/roster-print.module.css'
-import { getMonthRosterRange } from '@/lib/date-utils'
+import { getPayrollCycleRange } from '@/lib/date-utils'
 import AutoPrintClient from './AutoPrintClient'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +23,7 @@ export default async function RosterPrintPage({
         ? params.month!
         : new Date().toISOString().slice(0, 7)
 
-    const { startDate, endDate } = getMonthRosterRange(currentMonth)
+    const { startDate, endDate } = getPayrollCycleRange(currentMonth)
     const [users, shifts, leaves] = await Promise.all([
         getUsers(),
         getShifts(startDate, endDate),

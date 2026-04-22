@@ -1,4 +1,4 @@
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, format, parseISO } from 'date-fns'
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, format, parseISO, setDate, subMonths } from 'date-fns'
 
 export function getMonthRosterRange(month: string) {
     const date = parseISO(`${month}-01`)
@@ -17,5 +17,18 @@ export function getMonthRosterRange(month: string) {
         endDate: format(end, 'yyyy-MM-dd'),
         start,
         end
+    }
+}
+
+export function getPayrollCycleRange(month: string) {
+    const date = parseISO(`${month}-01`)
+    const cycleStart = setDate(subMonths(date, 1), 21)
+    const cycleEnd = setDate(date, 20)
+
+    return {
+        startDate: format(cycleStart, 'yyyy-MM-dd'),
+        endDate: format(cycleEnd, 'yyyy-MM-dd'),
+        start: cycleStart,
+        end: cycleEnd
     }
 }

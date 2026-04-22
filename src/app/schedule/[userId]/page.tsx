@@ -9,6 +9,7 @@ import { redirect } from 'next/navigation'
 import CalendarExport from './CalendarExport'
 import LeaveSection from './LeaveSection'
 import { getMultiplier } from '@/lib/holidays'
+import { getPayrollCycleRange } from '@/lib/date-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,11 +31,12 @@ export default async function PersonalSchedulePage({
 
     const currentMonth = month || new Date().toISOString().slice(0, 7)
     const monthDate = parseISO(`${currentMonth}-01`)
-    const startDate = format(startOfMonth(monthDate), 'yyyy-MM-dd')
-    const endDate = format(endOfMonth(monthDate), 'yyyy-MM-dd')
+    const monthStartDate = format(startOfMonth(monthDate), 'yyyy-MM-dd')
+    const monthEndDate = format(endOfMonth(monthDate), 'yyyy-MM-dd')
+    const { startDate: payrollStartDate, endDate: payrollEndDate, start: payrollStart, end: payrollEnd } = getPayrollCycleRange(currentMonth)
 
     const isPublished = await isMonthPublished(currentMonth)
-    const operatingDays = await getOperatingDaysForRange(startDate, endDate)
+    const operatingDays = await getOperatingDaysForRange(payrollStartDate, payrollEndDate)
     const markedHolidayDates = new Set(
         operatingDays
             .filter((day) => day.status === 'HOLIDAY')
@@ -43,7 +45,12 @@ export default async function PersonalSchedulePage({
 
     // Only fetch shifts if published or if viewing a past month (optional, but let's stick to strict publishing for "Activate")
     // Use empty array if not published
-    const shifts = isPublished ? await fetchUserShifts(id, startDate, endDate) : []
+    const [shifts, payrollShifts] = isPublished
+        ? await Promise.all([
+            fetchUserShifts(id, monthStartDate, monthEndDate),
+            fetchUserShifts(id, payrollStartDate, payrollEndDate)
+        ])
+        : [[], []]
     const leaveRequests = await getUserLeaveRequests(id)
 
     // Group by Week
@@ -134,7 +141,7 @@ export default async function PersonalSchedulePage({
                     lineHeight: '1.2'
                 }}>
                     <span>
-                        {shifts.reduce((acc: number, s: any) => {
+                        {payrollShifts.reduce((acc: number, s: any) => {
                             // Check if this shift date is covered by APPROVED leave
                             const shiftDate = s.date // YYYY-MM-DD
                             const onLeave = leaveRequests.some((req: any) =>
@@ -156,7 +163,10 @@ export default async function PersonalSchedulePage({
                             return acc + (rawHours * multiplier)
                         }, 0).toFixed(1)} hrs <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>(weighted)</span>
                     </span>
-                    {shifts.some((s: any) => (markedHolidayDates.has(s.date) ? 2.0 : getMultiplier(s.date)) > 1) && (
+                    <span style={{ fontSize: '0.65rem', fontWeight: 'normal', color: 'var(--muted-foreground)' }}>
+                        payroll {format(payrollStart, 'd MMM')} - {format(payrollEnd, 'd MMM')}
+                    </span>
+                    {payrollShifts.some((s: any) => (markedHolidayDates.has(s.date) ? 2.0 : getMultiplier(s.date)) > 1) && (
                         <span style={{ fontSize: '0.65rem', fontWeight: 'normal', color: 'var(--muted-foreground)' }}>
                             incl. Sun (1.5x) & Holidays (2x)
                         </span>
