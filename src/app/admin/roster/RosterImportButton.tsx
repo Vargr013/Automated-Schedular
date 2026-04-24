@@ -25,6 +25,17 @@ type WarningItem = {
 type ParsedRecord = NonNullable<ImportReport['records']>[number]
 type ColourSelections = Record<string, string>
 
+const WARNING_SURFACE = 'rgba(245, 158, 11, 0.12)'
+const WARNING_BORDER = 'rgba(245, 158, 11, 0.36)'
+const WARNING_TEXT = 'var(--foreground)'
+const INFO_SURFACE = 'rgba(var(--primary-rgb), 0.12)'
+const INFO_BORDER = 'rgba(var(--primary-rgb), 0.28)'
+const SUCCESS_SURFACE = 'rgba(34, 197, 94, 0.14)'
+const SUCCESS_TEXT = 'var(--foreground)'
+const DANGER_SURFACE = 'rgba(239, 68, 68, 0.13)'
+const DANGER_BORDER = 'rgba(239, 68, 68, 0.36)'
+const DANGER_TEXT = 'var(--foreground)'
+
 const WARNING_LABELS: Record<keyof NonNullable<ImportReport['warnings']>, string> = {
     unknownColours: 'Unknown Colours',
     unparsedValues: 'Unparsed Values',
@@ -154,8 +165,8 @@ function TabButton({ active, label, count, onClick }: {
             onClick={onClick}
             style={{
                 border: '1px solid var(--border)',
-                background: active ? '#111827' : 'var(--background)',
-                color: active ? '#fff' : 'var(--foreground)',
+                background: active ? 'var(--foreground)' : 'var(--background)',
+                color: active ? 'var(--background)' : 'var(--foreground)',
                 borderRadius: 999,
                 padding: '0.55rem 0.85rem',
                 cursor: 'pointer',
@@ -172,7 +183,7 @@ function TabButton({ active, label, count, onClick }: {
                     minWidth: 22,
                     padding: '0.08rem 0.35rem',
                     borderRadius: 999,
-                    background: active ? 'rgba(255,255,255,0.18)' : 'var(--muted)',
+                    background: active ? 'rgba(var(--primary-rgb), 0.18)' : 'var(--muted)',
                     fontSize: '0.72rem'
                 }}>{count}</span>
             )}
@@ -206,9 +217,9 @@ function OverviewPanel({ report }: { report: ImportReport }) {
                 <div style={{
                     padding: '0.9rem 1rem',
                     borderRadius: 14,
-                    border: report.detectedMonth !== '' ? '1px solid #fde68a' : '1px solid var(--border)',
-                    background: '#fffbeb',
-                    color: '#92400e',
+                    border: report.detectedMonth !== '' ? `1px solid ${WARNING_BORDER}` : '1px solid var(--border)',
+                    background: WARNING_SURFACE,
+                    color: WARNING_TEXT,
                     fontSize: '0.9rem',
                     lineHeight: 1.45
                 }}>
@@ -223,7 +234,7 @@ function OverviewPanel({ report }: { report: ImportReport }) {
                     gap: '0.75rem',
                     padding: '1rem',
                     borderRadius: 16,
-                    background: '#f8fafc',
+                    background: 'var(--muted)',
                     border: '1px solid var(--border)'
                 }}>
                     <div>
@@ -269,7 +280,7 @@ function OverviewPanel({ report }: { report: ImportReport }) {
                                 border: '1px solid var(--border)',
                                 borderRadius: 999,
                                 padding: '0.42rem 0.6rem',
-                                background: '#f8fafc',
+                                background: 'var(--muted)',
                                 fontSize: '0.82rem',
                                 fontWeight: 700
                             }}>
@@ -300,19 +311,19 @@ function WarningsPanel({ report }: { report: ImportReport }) {
                     display: 'grid',
                     gap: '0.4rem',
                     padding: '0.9rem',
-                    border: '1px solid #fed7aa',
+                    border: `1px solid ${WARNING_BORDER}`,
                     borderRadius: 14,
-                    background: '#fff7ed'
+                    background: WARNING_SURFACE
                 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
-                        <strong style={{ color: '#9a3412' }}>{warning.type}</strong>
-                        <span style={{ color: '#9a3412', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                        <strong style={{ color: WARNING_TEXT }}>{warning.type}</strong>
+                        <span style={{ color: WARNING_TEXT, fontSize: '0.8rem', fontFamily: 'monospace' }}>
                             {warning.cell || (warning.rowNumber ? `row ${warning.rowNumber}` : warning.sheetName)}
                         </span>
                     </div>
-                    <div style={{ color: '#7c2d12', lineHeight: 1.4 }}>{warning.message}</div>
+                    <div style={{ color: WARNING_TEXT, lineHeight: 1.4 }}>{warning.message}</div>
                     {(warning.rawValue || warning.sourceColor) && (
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.8rem', color: '#9a3412' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', fontSize: '0.8rem', color: 'var(--muted-foreground)' }}>
                             {warning.sourceColor && <span>Colour: <strong>{warning.sourceColor}</strong></span>}
                             {warning.rawValue && <span>Value: <strong>{warning.rawValue}</strong></span>}
                         </div>
@@ -349,9 +360,9 @@ function ColoursPanel({
             <div style={{
                 padding: '1rem',
                 borderRadius: 16,
-                border: '1px solid #bfdbfe',
-                background: '#eff6ff',
-                color: '#1e3a8a',
+                border: `1px solid ${INFO_BORDER}`,
+                background: INFO_SURFACE,
+                color: 'var(--foreground)',
                 lineHeight: 1.45
             }}>
                 Assign a workbook colour to an existing department. Only time-based staff records become shifts; events and notes stay as reference records.
@@ -367,8 +378,8 @@ function ColoursPanel({
                             gap: '1rem',
                             padding: '1rem',
                             borderRadius: 16,
-                            border: resolution.isUnknown ? '1px solid #fed7aa' : '1px solid var(--border)',
-                            background: resolution.isUnknown ? '#fff7ed' : 'var(--background)'
+                            border: resolution.isUnknown ? `1px solid ${WARNING_BORDER}` : '1px solid var(--border)',
+                            background: resolution.isUnknown ? WARNING_SURFACE : 'var(--background)'
                         }}>
                             <div style={{ display: 'grid', gap: '0.65rem' }}>
                                 <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -378,8 +389,8 @@ function ColoursPanel({
                                     <span style={{
                                         borderRadius: 999,
                                         padding: '0.18rem 0.5rem',
-                                        background: resolution.isUnknown ? '#fed7aa' : '#dcfce7',
-                                        color: resolution.isUnknown ? '#9a3412' : '#166534',
+                                        background: resolution.isUnknown ? WARNING_SURFACE : SUCCESS_SURFACE,
+                                        color: resolution.isUnknown ? WARNING_TEXT : SUCCESS_TEXT,
                                         fontSize: '0.72rem',
                                         fontWeight: 800
                                     }}>
@@ -440,7 +451,7 @@ function ColoursPanel({
                 padding: '1rem',
                 borderRadius: 16,
                 border: '1px solid var(--border)',
-                background: '#fff'
+                background: 'var(--background)'
             }}>
                 <div style={{ color: 'var(--muted-foreground)', fontSize: '0.86rem', lineHeight: 1.4 }}>
                     {selectedMappings.length} colour mapping{selectedMappings.length === 1 ? '' : 's'} selected. Apply recalculates this import; Save also remembers mappings for future workbooks.
@@ -536,13 +547,13 @@ function ConflictsPanel({ report }: { report: ImportReport }) {
             {report.conflicts.map((conflict, index) => (
                 <div key={`${conflict.type}-${conflict.date}-${index}`} style={{
                     padding: '0.9rem',
-                    border: '1px solid #fecaca',
+                    border: `1px solid ${DANGER_BORDER}`,
                     borderRadius: 14,
-                    background: '#fef2f2'
+                    background: DANGER_SURFACE
                 }}>
-                    <div style={{ fontWeight: 800, color: '#991b1b' }}>{conflict.type === 'LEAVE_CONFLICT' ? 'Leave Conflict' : 'Rule Violation'}</div>
-                    <div style={{ marginTop: '0.35rem', color: '#7f1d1d', lineHeight: 1.4 }}>{conflict.description}</div>
-                    <div style={{ marginTop: '0.35rem', color: '#991b1b', fontSize: '0.8rem', fontFamily: 'monospace' }}>{conflict.date}</div>
+                    <div style={{ fontWeight: 800, color: DANGER_TEXT }}>{conflict.type === 'LEAVE_CONFLICT' ? 'Leave Conflict' : 'Rule Violation'}</div>
+                    <div style={{ marginTop: '0.35rem', color: DANGER_TEXT, lineHeight: 1.4 }}>{conflict.description}</div>
+                    <div style={{ marginTop: '0.35rem', color: 'var(--muted-foreground)', fontSize: '0.8rem', fontFamily: 'monospace' }}>{conflict.date}</div>
                 </div>
             ))}
         </div>
@@ -590,7 +601,8 @@ function ImportReportModal({
                     display: 'flex',
                     flexDirection: 'column',
                     overflow: 'hidden',
-                    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)'
+                    background: 'linear-gradient(180deg, var(--card) 0%, var(--background) 100%)',
+                    color: 'var(--foreground)'
                 }}
                 onClick={(event) => event.stopPropagation()}
             >
@@ -608,8 +620,8 @@ function ImportReportModal({
                             <span style={{
                                 borderRadius: 999,
                                 padding: '0.25rem 0.55rem',
-                                background: isHumanImport ? '#dbeafe' : '#dcfce7',
-                                color: isHumanImport ? '#1d4ed8' : '#166534',
+                                background: isHumanImport ? INFO_SURFACE : SUCCESS_SURFACE,
+                                color: 'var(--foreground)',
                                 fontSize: '0.72rem',
                                 fontWeight: 800,
                                 textTransform: 'uppercase',
@@ -642,7 +654,7 @@ function ImportReportModal({
 
                 <div style={{ padding: '1.2rem 1.4rem', overflowY: 'auto', flex: 1 }}>
                     {!report.success && (
-                        <div style={{ padding: '1rem', borderRadius: 14, border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b' }}>
+                        <div style={{ padding: '1rem', borderRadius: 14, border: `1px solid ${DANGER_BORDER}`, background: DANGER_SURFACE, color: DANGER_TEXT }}>
                             <strong>Error:</strong> {report.message}
                         </div>
                     )}
@@ -665,14 +677,14 @@ function ImportReportModal({
                 <div style={{
                     padding: '1rem 1.4rem',
                     borderTop: '1px solid var(--border)',
-                    background: '#fff',
+                    background: 'var(--background)',
                     display: 'flex',
                     justifyContent: 'space-between',
                     gap: '1rem',
                     alignItems: 'center',
                     flexWrap: 'wrap'
                 }}>
-                    <div style={{ color: canConfirm ? 'var(--muted-foreground)' : '#991b1b', fontSize: '0.85rem', lineHeight: 1.4 }}>
+                    <div style={{ color: canConfirm ? 'var(--muted-foreground)' : DANGER_TEXT, fontSize: '0.85rem', lineHeight: 1.4 }}>
                         {canConfirm
                             ? `Confirm will overwrite ${report.coveredDates.length} covered dates and write ${report.shiftsToCreate.length} matched shifts.`
                             : report.success
@@ -686,7 +698,7 @@ function ImportReportModal({
                             className="btn"
                             onClick={onConfirm}
                             disabled={!canConfirm}
-                            style={{ background: '#b91c1c', color: '#fff' }}
+                            style={{ background: 'var(--destructive)', color: 'var(--destructive-foreground)' }}
                         >
                             {isProcessing ? 'Overwriting...' : `Overwrite ${report.shiftsToCreate.length} Shifts`}
                         </button>
