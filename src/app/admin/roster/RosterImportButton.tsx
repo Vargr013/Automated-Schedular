@@ -2,10 +2,16 @@
 
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { importRoster, confirmRosterImport, type ImportReport } from '@/app/actions/import-schedule'
+import {
+    importRoster,
+    confirmRosterImport,
+    resolveRosterImportColours,
+    type ColourMappingInput,
+    type ImportReport
+} from '@/app/actions/import-schedule'
 import { useRouter } from 'next/navigation'
 
-type ImportTab = 'overview' | 'warnings' | 'records' | 'conflicts'
+type ImportTab = 'overview' | 'colours' | 'warnings' | 'records' | 'conflicts'
 
 type WarningItem = {
     message: string
@@ -17,6 +23,7 @@ type WarningItem = {
 }
 
 type ParsedRecord = NonNullable<ImportReport['records']>[number]
+type ColourSelections = Record<string, string>
 
 const WARNING_LABELS: Record<keyof NonNullable<ImportReport['warnings']>, string> = {
     unknownColours: 'Unknown Colours',
@@ -76,6 +83,23 @@ function groupRecordsByColour(records: ParsedRecord[] = []) {
     })
 
     return Array.from(groups.values()).sort((a, b) => b.count - a.count)
+}
+
+function getInitialColourSelections(report: ImportReport): ColourSelections {
+    return Object.fromEntries(
+        (report.colourResolutions || [])
+            .filter((resolution) => resolution.mappedDepartmentId)
+            .map((resolution) => [resolution.sourceColor, String(resolution.mappedDepartmentId)])
+    )
+}
+
+function getSelectedMappings(selections: ColourSelections): ColourMappingInput[] {
+    return Object.entries(selections)
+        .map(([sourceColor, departmentId]) => ({
+            sourceColor,
+            departmentId: Number(departmentId)
+        }))
+        .filter((mapping) => mapping.sourceColor && Number.isFinite(mapping.departmentId) && mapping.departmentId > 0)
 }
 
 function colourSwatchStyle(colour: string): React.CSSProperties {
@@ -299,6 +323,151 @@ function WarningsPanel({ report }: { report: ImportReport }) {
     )
 }
 
+function ColoursPanel({
+    report,
+    selections,
+    isResolving,
+    onSelectionChange,
+    onResolve
+}: {
+    report: ImportReport
+    selections: ColourSelections
+    isResolving: boolean
+    onSelectionChange: (sourceColor: string, departmentId: string) => void
+    onResolve: (persist: boolean) => void
+}) {
+    const colourResolutions = report.colourResolutions || []
+    const departments = report.departmentOptions || []
+    const selectedMappings = getSelectedMappings(selections)
+
+    if (colourResolutions.length === 0) {
+        return <EmptyState title="No workbook colours to resolve" detail="This import either came from the app export format or all meaningful cells had no fill colour." />
+    }
+
+    return (
+        <div style={{ display: 'grid', gap: '1rem' }}>
+            <div style={{
+                padding: '1rem',
+                borderRadius: 16,
+                border: '1px solid #bfdbfe',
+                background: '#eff6ff',
+                color: '#1e3a8a',
+                lineHeight: 1.45
+            }}>
+                Assign a workbook colour to an existing department. Only time-based staff records become shifts; events and notes stay as reference records.
+            </div>
+
+            <div style={{ display: 'grid', gap: '0.8rem' }}>
+                {colourResolutions.map((resolution) => {
+                    const selectedDepartmentId = selections[resolution.sourceColor] || ''
+                    return (
+                        <div key={resolution.sourceColor} style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 300px)',
+                            gap: '1rem',
+                            padding: '1rem',
+                            borderRadius: 16,
+                            border: resolution.isUnknown ? '1px solid #fed7aa' : '1px solid var(--border)',
+                            background: resolution.isUnknown ? '#fff7ed' : 'var(--background)'
+                        }}>
+                            <div style={{ display: 'grid', gap: '0.65rem' }}>
+                                <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <span style={{ ...colourSwatchStyle(resolution.sourceColor), width: 24, height: 24 }} />
+                                    <strong>{resolution.sourceColor}</strong>
+                                    <span style={{ color: 'var(--muted-foreground)' }}>{resolution.category}</span>
+                                    <span style={{
+                                        borderRadius: 999,
+                                        padding: '0.18rem 0.5rem',
+                                        background: resolution.isUnknown ? '#fed7aa' : '#dcfce7',
+                                        color: resolution.isUnknown ? '#9a3412' : '#166534',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800
+                                    }}>
+                                        {resolution.mappedDepartmentName ? `Maps to ${resolution.mappedDepartmentName}` : 'Unassigned'}
+                                    </span>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', color: 'var(--muted-foreground)', fontSize: '0.84rem' }}>
+                                    <span>{resolution.recordCount} records</span>
+                                    <span>{resolution.timeRecordCount} time-based staff records</span>
+                                </div>
+
+                                {resolution.samples.length > 0 && (
+                                    <div style={{ display: 'grid', gap: '0.35rem' }}>
+                                        {resolution.samples.map((sample) => (
+                                            <div key={`${resolution.sourceColor}-${sample.sourceCell}-${sample.date}`} style={{ color: 'var(--muted-foreground)', fontSize: '0.82rem' }}>
+                                                <span style={{ fontFamily: 'monospace' }}>{sample.sourceCell}</span>
+                                                {' '}
+                                                {sample.date}
+                                                {' '}
+                                                {sample.staffName || 'Event'}
+                                                {sample.rawValue ? `: ${sample.rawValue}` : ''}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ display: 'grid', gap: '0.5rem', alignContent: 'center' }}>
+                                <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                    Assign department
+                                </label>
+                                <select
+                                    className="select"
+                                    value={selectedDepartmentId}
+                                    onChange={(event) => onSelectionChange(resolution.sourceColor, event.target.value)}
+                                    disabled={isResolving}
+                                >
+                                    <option value="">Unassigned</option>
+                                    {departments.map((department) => (
+                                        <option key={department.id} value={department.id}>
+                                            {department.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: '1rem',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                padding: '1rem',
+                borderRadius: 16,
+                border: '1px solid var(--border)',
+                background: '#fff'
+            }}>
+                <div style={{ color: 'var(--muted-foreground)', fontSize: '0.86rem', lineHeight: 1.4 }}>
+                    {selectedMappings.length} colour mapping{selectedMappings.length === 1 ? '' : 's'} selected. Apply recalculates this import; Save also remembers mappings for future workbooks.
+                </div>
+                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={isResolving || selectedMappings.length === 0}
+                        onClick={() => onResolve(false)}
+                    >
+                        {isResolving ? 'Applying...' : 'Apply to This Import'}
+                    </button>
+                    <button
+                        type="button"
+                        className="btn"
+                        disabled={isResolving || selectedMappings.length === 0}
+                        onClick={() => onResolve(true)}
+                    >
+                        {isResolving ? 'Saving...' : 'Save for Future Imports'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 function RecordsPanel({ report }: { report: ImportReport }) {
     const records = report.records || []
     const visibleRecords = records.slice(0, 250)
@@ -384,16 +553,24 @@ function ImportReportModal({
     report,
     currentMonth,
     isProcessing,
+    isResolving,
     activeTab,
+    colourSelections,
     onTabChange,
+    onColourSelectionChange,
+    onResolveColours,
     onClose,
     onConfirm
 }: {
     report: ImportReport
     currentMonth: string
     isProcessing: boolean
+    isResolving: boolean
     activeTab: ImportTab
+    colourSelections: ColourSelections
     onTabChange: (tab: ImportTab) => void
+    onColourSelectionChange: (sourceColor: string, departmentId: string) => void
+    onResolveColours: (persist: boolean) => void
     onClose: () => void
     onConfirm: () => void
 }) {
@@ -457,6 +634,7 @@ function ImportReportModal({
 
                 <div style={{ padding: '0.9rem 1.4rem', borderBottom: '1px solid var(--border)', display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
                     <TabButton active={activeTab === 'overview'} label="Overview" onClick={() => onTabChange('overview')} />
+                    <TabButton active={activeTab === 'colours'} label="Colours" count={report.colourResolutions?.length} onClick={() => onTabChange('colours')} />
                     <TabButton active={activeTab === 'warnings'} label="Warnings" count={warningCount} onClick={() => onTabChange('warnings')} />
                     <TabButton active={activeTab === 'records'} label="Parsed Records" count={report.records?.length} onClick={() => onTabChange('records')} />
                     <TabButton active={activeTab === 'conflicts'} label="Conflicts" count={report.conflicts.length} onClick={() => onTabChange('conflicts')} />
@@ -470,6 +648,15 @@ function ImportReportModal({
                     )}
 
                     {report.success && activeTab === 'overview' && <OverviewPanel report={report} />}
+                    {report.success && activeTab === 'colours' && (
+                        <ColoursPanel
+                            report={report}
+                            selections={colourSelections}
+                            isResolving={isResolving}
+                            onSelectionChange={onColourSelectionChange}
+                            onResolve={onResolveColours}
+                        />
+                    )}
                     {report.success && activeTab === 'warnings' && <WarningsPanel report={report} />}
                     {report.success && activeTab === 'records' && <RecordsPanel report={report} />}
                     {report.success && activeTab === 'conflicts' && <ConflictsPanel report={report} />}
@@ -512,9 +699,11 @@ function ImportReportModal({
 
 export default function RosterImportButton({ currentMonth }: { currentMonth: string }) {
     const [isProcessing, setIsProcessing] = useState(false)
+    const [isResolving, setIsResolving] = useState(false)
     const [report, setReport] = useState<ImportReport | null>(null)
     const [isOpen, setIsOpen] = useState(false)
     const [activeTab, setActiveTab] = useState<ImportTab>('overview')
+    const [colourSelections, setColourSelections] = useState<ColourSelections>({})
     const fileInputRef = useRef<HTMLInputElement>(null)
     const router = useRouter()
 
@@ -528,11 +717,39 @@ export default function RosterImportButton({ currentMonth }: { currentMonth: str
 
         const result = await importRoster(formData)
         setReport(result)
+        setColourSelections(getInitialColourSelections(result))
         setActiveTab(result.success ? 'overview' : 'warnings')
         setIsOpen(true)
         setIsProcessing(false)
 
         if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+
+    const handleColourSelectionChange = (sourceColor: string, departmentId: string) => {
+        setColourSelections((current) => ({
+            ...current,
+            [sourceColor]: departmentId
+        }))
+    }
+
+    const handleResolveColours = async (persist: boolean) => {
+        if (!report) return
+
+        const mappings = getSelectedMappings(colourSelections)
+        if (mappings.length === 0) return
+
+        try {
+            setIsResolving(true)
+            const result = await resolveRosterImportColours(report, mappings, persist)
+            setReport(result)
+            setColourSelections(getInitialColourSelections(result))
+            setActiveTab('overview')
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to resolve colour mappings'
+            alert(message)
+        } finally {
+            setIsResolving(false)
+        }
     }
 
     const handleConfirm = async () => {
@@ -550,6 +767,7 @@ export default function RosterImportButton({ currentMonth }: { currentMonth: str
     const handleClose = () => {
         setIsOpen(false)
         setReport(null)
+        setColourSelections({})
     }
 
     const portalTarget = typeof document === 'undefined' ? null : document.body
@@ -578,8 +796,12 @@ export default function RosterImportButton({ currentMonth }: { currentMonth: str
                     report={report}
                     currentMonth={currentMonth}
                     isProcessing={isProcessing}
+                    isResolving={isResolving}
                     activeTab={activeTab}
+                    colourSelections={colourSelections}
                     onTabChange={setActiveTab}
+                    onColourSelectionChange={handleColourSelectionChange}
+                    onResolveColours={handleResolveColours}
                     onClose={handleClose}
                     onConfirm={handleConfirm}
                 />,

@@ -54,6 +54,19 @@ model Department {
   userSkills      UserSkill[]
   automationRules AutomationRule[]
   constraints     Constraint[]
+  importColourMappings RosterImportColourMapping[]
+}
+
+model RosterImportColourMapping {
+  id           Int        @id @default(autoincrement())
+  sourceColor  String     @unique
+  departmentId Int
+  label        String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@index([departmentId])
 }
 
 model AutomationRule {

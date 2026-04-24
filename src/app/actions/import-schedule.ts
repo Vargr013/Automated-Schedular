@@ -43,6 +43,33 @@ export type ScannedShift = {
     isSmod: boolean
 }
 
+export type DepartmentOption = {
+    id: number
+    name: string
+    colorCode: string
+}
+
+export type ColourResolution = {
+    sourceColor: string
+    category: string
+    recordCount: number
+    timeRecordCount: number
+    mappedDepartmentId: number | null
+    mappedDepartmentName: string | null
+    isUnknown: boolean
+    samples: {
+        staffName: string | null
+        date: string
+        rawValue: string
+        sourceCell: string
+    }[]
+}
+
+export type ColourMappingInput = {
+    sourceColor: string
+    departmentId: number
+}
+
 export type ImportReport = {
     success: boolean
     message: string
@@ -59,6 +86,8 @@ export type ImportReport = {
     staff?: string[]
     categories?: string[]
     warnings?: HumanRosterWarnings
+    departmentOptions?: DepartmentOption[]
+    colourResolutions?: ColourResolution[]
 }
 
 type MetadataShift = {
@@ -253,10 +282,39 @@ function findMetadataShift(
     )
 }
 
+type ImportDepartment = Awaited<ReturnType<typeof prisma.department.findMany>>[number]
+type ImportUser = Awaited<ReturnType<typeof prisma.user.findMany>>[number]
+type ImportLeave = Awaited<ReturnType<typeof prisma.leave.findMany>>[number]
+type ImportRule = Awaited<ReturnType<typeof prisma.automationRule.findMany>>[number]
+type SavedColourMapping = {
+    sourceColor: string
+    departmentId: number
+    label: string | null
+    department: ImportDepartment
+}
+
+function getDepartmentOptions(departments: ImportDepartment[]): DepartmentOption[] {
+    return departments
+        .map((department) => ({
+            id: department.id,
+            name: department.name,
+            colorCode: department.color_code
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function buildSavedMappingMap(savedMappings: SavedColourMapping[]) {
+    return new Map(savedMappings.map((mapping) => [normaliseColour(mapping.sourceColor), mapping]))
+}
+
 function getDepartmentMatch(
     record: HumanRosterRecord,
-    departments: Awaited<ReturnType<typeof prisma.department.findMany>>
+    departments: ImportDepartment[],
+    savedMappings: SavedColourMapping[] = []
 ) {
+    const savedMapping = buildSavedMappingMap(savedMappings).get(record.sourceColor)
+    if (savedMapping) return savedMapping.department
+
     const byName = new Map(departments.map((department) => [department.name.trim().toLowerCase(), department]))
     const byColour = new Map(
         departments
@@ -276,14 +334,102 @@ function getDepartmentMatch(
     return byColour.get(record.sourceColor) || null
 }
 
+function applyColourMappingsToRecords(
+    records: HumanRosterRecord[],
+    savedMappings: SavedColourMapping[]
+) {
+    const savedMappingMap = buildSavedMappingMap(savedMappings)
+
+    return records.map((record) => {
+        const savedMapping = savedMappingMap.get(record.sourceColor)
+        if (!savedMapping) return record
+
+        return {
+            ...record,
+            category: savedMapping.department.name
+        }
+    })
+}
+
+function resolveWarningsForMappings(
+    warnings: HumanRosterWarnings | undefined,
+    savedMappings: SavedColourMapping[]
+) {
+    if (!warnings) return warnings
+
+    const mappedColours = new Set(savedMappings.map((mapping) => normaliseColour(mapping.sourceColor)))
+    return {
+        ...warnings,
+        unknownColours: warnings.unknownColours.filter((warning) =>
+            !warning.sourceColor || !mappedColours.has(normaliseColour(warning.sourceColor))
+        )
+    }
+}
+
+function buildColourResolutions({
+    records,
+    departments,
+    savedMappings
+}: {
+    records: HumanRosterRecord[]
+    departments: ImportDepartment[]
+    savedMappings: SavedColourMapping[]
+}): ColourResolution[] {
+    const groups = new Map<string, ColourResolution>()
+
+    records
+        .filter((record) => record.sourceColor !== 'NO_FILL' && record.sourceColor !== '#FFFFFF')
+        .forEach((record) => {
+            const existing = groups.get(record.sourceColor)
+            const department = getDepartmentMatch(record, departments, savedMappings)
+            const base: ColourResolution = existing || {
+                sourceColor: record.sourceColor,
+                category: record.category,
+                recordCount: 0,
+                timeRecordCount: 0,
+                mappedDepartmentId: department?.id || null,
+                mappedDepartmentName: department?.name || null,
+                isUnknown: record.category === 'Unknown' && !department,
+                samples: []
+            }
+
+            base.recordCount += 1
+            if (record.staffName && record.startTime && record.endTime) {
+                base.timeRecordCount += 1
+            }
+            if (!base.mappedDepartmentId && department) {
+                base.mappedDepartmentId = department.id
+                base.mappedDepartmentName = department.name
+                base.isUnknown = false
+            }
+            if (base.samples.length < 3) {
+                base.samples.push({
+                    staffName: record.staffName,
+                    date: record.date,
+                    rawValue: record.rawValue,
+                    sourceCell: record.sourceCell
+                })
+            }
+
+            groups.set(record.sourceColor, base)
+        })
+
+    return Array.from(groups.values()).sort((a, b) => {
+        if (a.isUnknown !== b.isUnknown) return a.isUnknown ? -1 : 1
+        return b.recordCount - a.recordCount
+    })
+}
+
 function buildHumanScannedShifts({
     records,
     users,
-    departments
+    departments,
+    savedMappings = []
 }: {
     records: HumanRosterRecord[]
-    users: Awaited<ReturnType<typeof prisma.user.findMany>>
-    departments: Awaited<ReturnType<typeof prisma.department.findMany>>
+    users: ImportUser[]
+    departments: ImportDepartment[]
+    savedMappings?: SavedColourMapping[]
 }) {
     const usersByName = new Map<string, typeof users>()
     users.forEach((user) => {
@@ -305,7 +451,7 @@ function buildHumanScannedShifts({
         const matches = usersByName.get(record.staffName.trim().toLowerCase()) || []
         if (matches.length !== 1) return
 
-        const department = getDepartmentMatch(record, departments)
+        const department = getDepartmentMatch(record, departments, savedMappings)
         if (!department) return
 
         foundUserIds.add(matches[0].id)
@@ -330,10 +476,10 @@ function buildShiftConflicts({
     departments
 }: {
     scannedShifts: ScannedShift[]
-    users: Awaited<ReturnType<typeof prisma.user.findMany>>
-    leaves: Awaited<ReturnType<typeof prisma.leave.findMany>>
-    rules: Awaited<ReturnType<typeof prisma.automationRule.findMany>>
-    departments: Awaited<ReturnType<typeof prisma.department.findMany>>
+    users: ImportUser[]
+    leaves: ImportLeave[]
+    rules: ImportRule[]
+    departments: ImportDepartment[]
 }) {
     const conflicts: ImportConflict[] = []
     const usersById = new Map(users.map((user) => [user.id, user]))
@@ -414,6 +560,9 @@ async function buildHumanImportReport(
         include: { skills: true }
     })
     const departments = await prisma.department.findMany()
+    const savedMappings = await prisma.rosterImportColourMapping.findMany({
+        include: { department: true }
+    })
     const leaves = await prisma.leave.findMany({
         where: {
             status: 'APPROVED',
@@ -425,10 +574,14 @@ async function buildHumanImportReport(
     })
     const rules = await prisma.automationRule.findMany()
 
+    const resolvedRecords = applyColourMappingsToRecords(parsed.records, savedMappings)
+    const resolvedWarnings = resolveWarningsForMappings(parsed.warnings, savedMappings)
+
     const { scannedShifts, foundUserIds } = buildHumanScannedShifts({
-        records: parsed.records,
+        records: resolvedRecords,
         users,
-        departments
+        departments,
+        savedMappings
     })
     const conflicts = buildShiftConflicts({
         scannedShifts,
@@ -450,10 +603,16 @@ async function buildHumanImportReport(
             usersFound: foundUserIds.size
         },
         source: parsed.source,
-        records: parsed.records,
+        records: resolvedRecords,
         staff: parsed.staff,
-        categories: parsed.categories,
-        warnings: parsed.warnings
+        categories: Array.from(new Set(resolvedRecords.map((record) => record.category))).sort(),
+        warnings: resolvedWarnings,
+        departmentOptions: getDepartmentOptions(departments),
+        colourResolutions: buildColourResolutions({
+            records: resolvedRecords,
+            departments,
+            savedMappings
+        })
     }
 }
 
@@ -726,6 +885,126 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
         console.error('Import Error:', error)
         const message = error instanceof Error ? error.message : 'Unknown import error'
         return emptyReport(`Error processing file: ${message}`)
+    }
+}
+
+export async function resolveRosterImportColours(
+    report: ImportReport,
+    mappings: ColourMappingInput[],
+    persist = true
+): Promise<ImportReport> {
+    await requireAdmin()
+
+    if (!report.records || report.records.length === 0) {
+        return report
+    }
+
+    const normalizedMappings = mappings
+        .map((mapping) => ({
+            sourceColor: normaliseColour(mapping.sourceColor),
+            departmentId: Number(mapping.departmentId)
+        }))
+        .filter((mapping) => mapping.sourceColor && mapping.sourceColor !== 'NO_FILL' && Number.isFinite(mapping.departmentId))
+
+    if (normalizedMappings.length === 0) {
+        return report
+    }
+
+    const departments = await prisma.department.findMany()
+    const validDepartmentIds = new Set(departments.map((department) => department.id))
+    const invalidMapping = normalizedMappings.find((mapping) => !validDepartmentIds.has(mapping.departmentId))
+    if (invalidMapping) {
+        throw new Error(`Invalid department selected for ${invalidMapping.sourceColor}`)
+    }
+
+    if (persist) {
+        await prisma.$transaction(
+            normalizedMappings.map((mapping) => {
+                const department = departments.find((candidate) => candidate.id === mapping.departmentId)
+                return prisma.rosterImportColourMapping.upsert({
+                    where: { sourceColor: mapping.sourceColor },
+                    update: {
+                        departmentId: mapping.departmentId,
+                        label: department?.name || null
+                    },
+                    create: {
+                        sourceColor: mapping.sourceColor,
+                        departmentId: mapping.departmentId,
+                        label: department?.name || null
+                    }
+                })
+            })
+        )
+    }
+
+    const persistedMappings = persist
+        ? await prisma.rosterImportColourMapping.findMany({ include: { department: true } })
+        : []
+    const transientMappings: SavedColourMapping[] = persist
+        ? []
+        : normalizedMappings
+            .flatMap((mapping) => {
+                const department = departments.find((candidate) => candidate.id === mapping.departmentId)
+                if (!department) return []
+                return [{
+                    sourceColor: mapping.sourceColor,
+                    departmentId: mapping.departmentId,
+                    label: department.name,
+                    department
+                }]
+            })
+    const savedMappings: SavedColourMapping[] = [...persistedMappings, ...transientMappings]
+
+    const users = await prisma.user.findMany({
+        include: { skills: true }
+    })
+    const month = report.detectedMonth || report.coveredDates[0]?.slice(0, 7) || ''
+    const { start: monthStart } = month ? getMonthRosterRange(month) : { start: new Date() }
+    const leaves = await prisma.leave.findMany({
+        where: {
+            status: 'APPROVED',
+            OR: [
+                { startDate: { gte: format(monthStart, 'yyyy-MM-dd') } },
+                { endDate: { gte: format(monthStart, 'yyyy-MM-dd') } }
+            ]
+        }
+    })
+    const rules = await prisma.automationRule.findMany()
+
+    const resolvedRecords = applyColourMappingsToRecords(report.records, savedMappings)
+    const resolvedWarnings = resolveWarningsForMappings(report.warnings, savedMappings)
+    const { scannedShifts, foundUserIds } = buildHumanScannedShifts({
+        records: resolvedRecords,
+        users,
+        departments,
+        savedMappings
+    })
+    const conflicts = buildShiftConflicts({
+        scannedShifts,
+        users,
+        leaves,
+        rules,
+        departments
+    })
+
+    return {
+        ...report,
+        message: persist ? 'Colour mappings saved and import recalculated.' : 'Colour mappings applied to this import.',
+        records: resolvedRecords,
+        categories: Array.from(new Set(resolvedRecords.map((record) => record.category))).sort(),
+        warnings: resolvedWarnings,
+        shiftsToCreate: scannedShifts,
+        conflicts,
+        stats: {
+            totalShiftsFound: scannedShifts.length,
+            usersFound: foundUserIds.size
+        },
+        departmentOptions: getDepartmentOptions(departments),
+        colourResolutions: buildColourResolutions({
+            records: resolvedRecords,
+            departments,
+            savedMappings
+        })
     }
 }
 
