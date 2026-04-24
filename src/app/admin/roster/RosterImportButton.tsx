@@ -35,6 +35,18 @@ const SUCCESS_TEXT = 'var(--foreground)'
 const DANGER_SURFACE = 'rgba(239, 68, 68, 0.13)'
 const DANGER_BORDER = 'rgba(239, 68, 68, 0.36)'
 const DANGER_TEXT = 'var(--foreground)'
+const IMPORT_REVIEW_DARK_THEME = {
+    '--background': '#050816',
+    '--foreground': '#F8FAFC',
+    '--card': '#080D1D',
+    '--muted': '#111827',
+    '--muted-foreground': '#94A3B8',
+    '--border': '#263247',
+    '--input': '#334155',
+    '--destructive': '#B91C1C',
+    '--destructive-foreground': '#FFFFFF',
+    '--primary-rgb': '59, 130, 246'
+} as React.CSSProperties
 
 const WARNING_LABELS: Record<keyof NonNullable<ImportReport['warnings']>, string> = {
     unknownColours: 'Unknown Colours',
@@ -590,7 +602,7 @@ function ImportReportModal({
     const isHumanImport = Boolean(report.records)
 
     return (
-        <div className="modal-overlay" style={{ zIndex: 9999, padding: '1rem' }}>
+        <div className="modal-overlay" style={{ ...IMPORT_REVIEW_DARK_THEME, zIndex: 9999, padding: '1rem', backgroundColor: 'rgba(2, 6, 23, 0.78)' }}>
             <div
                 className="modal-content"
                 style={{
@@ -601,8 +613,10 @@ function ImportReportModal({
                     display: 'flex',
                     flexDirection: 'column',
                     overflow: 'hidden',
-                    background: 'linear-gradient(180deg, var(--card) 0%, var(--background) 100%)',
-                    color: 'var(--foreground)'
+                    background: 'linear-gradient(180deg, #0B1020 0%, #050816 100%)',
+                    color: 'var(--foreground)',
+                    border: '1px solid #334155',
+                    boxShadow: '0 28px 80px rgba(0, 0, 0, 0.58)'
                 }}
                 onClick={(event) => event.stopPropagation()}
             >
