@@ -3,6 +3,7 @@
 import prisma from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/admin-auth'
+import { getSouthAfricanPublicHolidays } from '@/lib/holidays'
 
 export async function getOperatingDays() {
     return getOperatingDaysForRange()
@@ -75,4 +76,37 @@ export async function deleteOperatingDay(formData: FormData) {
     })
 
     revalidatePath('/admin/calendar')
+}
+
+export async function generateCurrentYearPublicHolidays() {
+    await requireAdmin()
+
+    const year = Number(new Intl.DateTimeFormat('en-ZA', {
+        timeZone: 'Africa/Johannesburg',
+        year: 'numeric',
+    }).format(new Date()))
+    const holidays = getSouthAfricanPublicHolidays(year)
+
+    await prisma.$transaction(
+        holidays.map((holiday) => prisma.operatingDay.upsert({
+            where: { date: holiday.date },
+            update: {
+                status: 'HOLIDAY',
+                event_note: holiday.name,
+            },
+            create: {
+                date: holiday.date,
+                status: 'HOLIDAY',
+                event_note: holiday.name,
+            },
+        }))
+    )
+
+    revalidatePath('/admin/calendar')
+    revalidatePath('/admin/roster')
+
+    return {
+        count: holidays.length,
+        year,
+    }
 }

@@ -1,38 +1,75 @@
-import { format, getDay, parseISO } from 'date-fns'
+import { addDays, format, getDay, parseISO } from 'date-fns'
+
+export type PublicHoliday = {
+    date: string
+    name: string
+}
+
+function toDateString(year: number, month: number, day: number): string {
+    return format(new Date(year, month - 1, day), 'yyyy-MM-dd')
+}
+
+function getEasterSunday(year: number): Date {
+    const a = year % 19
+    const b = Math.floor(year / 100)
+    const c = year % 100
+    const d = Math.floor(b / 4)
+    const e = b % 4
+    const f = Math.floor((b + 8) / 25)
+    const g = Math.floor((b - f + 1) / 3)
+    const h = (19 * a + b - d - g + 15) % 30
+    const i = Math.floor(c / 4)
+    const k = c % 4
+    const l = (32 + 2 * e + 2 * i - h - k) % 7
+    const m = Math.floor((a + 11 * h + 22 * l) / 451)
+    const month = Math.floor((h + l - 7 * m + 114) / 31)
+    const day = ((h + l - 7 * m + 114) % 31) + 1
+
+    return new Date(year, month - 1, day)
+}
+
+export function getSouthAfricanPublicHolidays(year: number): PublicHoliday[] {
+    const easterSunday = getEasterSunday(year)
+    const holidays: PublicHoliday[] = [
+        { date: toDateString(year, 1, 1), name: "New Year's Day" },
+        { date: toDateString(year, 3, 21), name: 'Human Rights Day' },
+        { date: format(addDays(easterSunday, -2), 'yyyy-MM-dd'), name: 'Good Friday' },
+        { date: format(addDays(easterSunday, 1), 'yyyy-MM-dd'), name: 'Family Day' },
+        { date: toDateString(year, 4, 27), name: 'Freedom Day' },
+        { date: toDateString(year, 5, 1), name: "Workers' Day" },
+        { date: toDateString(year, 6, 16), name: 'Youth Day' },
+        { date: toDateString(year, 8, 9), name: "National Women's Day" },
+        { date: toDateString(year, 9, 24), name: 'Heritage Day' },
+        { date: toDateString(year, 12, 16), name: 'Day of Reconciliation' },
+        { date: toDateString(year, 12, 25), name: 'Christmas Day' },
+        { date: toDateString(year, 12, 26), name: 'Day of Goodwill' },
+    ]
+
+    const observedHolidays = holidays
+        .filter((holiday) => getDay(parseISO(holiday.date)) === 0)
+        .map((holiday) => ({
+            date: format(addDays(parseISO(holiday.date), 1), 'yyyy-MM-dd'),
+            name: `Public Holiday (Monday after ${holiday.name})`,
+        }))
+
+    const holidaysByDate = new Map<string, PublicHoliday>()
+
+    for (const holiday of [...holidays, ...observedHolidays]) {
+        const existing = holidaysByDate.get(holiday.date)
+        holidaysByDate.set(holiday.date, {
+            date: holiday.date,
+            name: existing ? `${existing.name} / ${holiday.name}` : holiday.name,
+        })
+    }
+
+    return [...holidaysByDate.values()]
+        .sort((a, b) => a.date.localeCompare(b.date))
+}
 
 export const SOUTH_AFRICAN_HOLIDAYS = [
-    // 2024
-    '2024-01-01', '2024-03-21', '2024-03-29', '2024-04-01', '2024-04-27',
-    '2024-05-01', '2024-06-16', '2024-06-17', '2024-08-09', '2024-09-24',
-    '2024-12-16', '2024-12-25', '2024-12-26',
-    // 2025
-    '2025-01-01', // New Year
-    '2025-03-21', // Human Rights Day
-    '2025-04-18', // Good Friday
-    '2025-04-21', // Family Day
-    '2025-04-27', // Freedom Day
-    '2025-04-28', // Freedom Day observed
-    '2025-05-01', // Workers Day
-    '2025-06-16', // Youth Day
-    '2025-08-09', // Women's Day
-    '2025-09-24', // Heritage Day
-    '2025-12-16', // Reconciliation Day
-    '2025-12-25', // Christmas
-    '2025-12-26', // Goodwill Day
-    // 2026
-    '2026-01-01', // New Year
-    '2026-03-21', // Human Rights Day
-    '2026-04-03', // Good Friday
-    '2026-04-06', // Family Day
-    '2026-04-27', // Freedom Day
-    '2026-05-01', // Workers Day
-    '2026-06-16', // Youth Day
-    '2026-08-09', // Women's Day
-    '2026-08-10', // Women's Day observed (falls on Sunday)
-    '2026-09-24', // Heritage Day
-    '2026-12-16', // Reconciliation Day
-    '2026-12-25', // Christmas
-    '2026-12-26', // Day of Goodwill
+    ...getSouthAfricanPublicHolidays(2024).map((holiday) => holiday.date),
+    ...getSouthAfricanPublicHolidays(2025).map((holiday) => holiday.date),
+    ...getSouthAfricanPublicHolidays(2026).map((holiday) => holiday.date),
 ]
 
 export function isPublicHoliday(dateStr: string): boolean {

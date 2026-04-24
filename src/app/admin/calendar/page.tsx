@@ -1,6 +1,7 @@
 import { getOperatingDays, deleteOperatingDay } from '@/app/actions/calendar'
 import AddHolidayForm from './AddHolidayForm'
 import EditOperatingDayModal from './EditOperatingDayModal'
+import GeneratePublicHolidaysButton from './GeneratePublicHolidaysButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,6 +11,8 @@ export default async function CalendarPage() {
     return (
         <div>
             <h1 style={{ marginBottom: '20px' }}>Operating Calendar & Holidays</h1>
+
+            <GeneratePublicHolidaysButton />
 
             <div className="card" style={{ overflowX: 'auto', padding: 0 }}>
                 <table>
