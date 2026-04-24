@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:human-roster": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/test-human-roster-import.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

@@ -17,6 +17,15 @@ import {
     ROSTER_ROW_USER_ID_COLUMN,
     WEEK_COLUMN_COUNT
 } from '@/app/admin/roster/export-layout'
+import {
+    normaliseColour,
+    parseHumanRosterWorksheet,
+    selectHumanScheduleSheet,
+    type HumanRosterParseResult,
+    type HumanRosterRecord,
+    type HumanRosterWarnings
+} from './human-roster-import'
+import { DEFAULT_HUMAN_ROSTER_IMPORT_CONFIG } from './roster-import-config'
 
 export type ImportConflict = {
     type: 'RULE_VIOLATION' | 'LEAVE_CONFLICT' | 'Unknown'
@@ -45,6 +54,11 @@ export type ImportReport = {
         totalShiftsFound: number
         usersFound: number
     }
+    source?: HumanRosterParseResult['source']
+    records?: HumanRosterRecord[]
+    staff?: string[]
+    categories?: string[]
+    warnings?: HumanRosterWarnings
 }
 
 type MetadataShift = {
@@ -239,6 +253,210 @@ function findMetadataShift(
     )
 }
 
+function getDepartmentMatch(
+    record: HumanRosterRecord,
+    departments: Awaited<ReturnType<typeof prisma.department.findMany>>
+) {
+    const byName = new Map(departments.map((department) => [department.name.trim().toLowerCase(), department]))
+    const byColour = new Map(
+        departments
+            .filter((department) => department.color_code)
+            .map((department) => [normaliseColour(department.color_code), department])
+    )
+
+    const directCategoryMatch = byName.get(record.category.trim().toLowerCase())
+    if (directCategoryMatch) return directCategoryMatch
+
+    const alias = DEFAULT_HUMAN_ROSTER_IMPORT_CONFIG.categoryDepartmentAliases[record.category]
+    if (alias) {
+        const aliasMatch = byName.get(alias.trim().toLowerCase())
+        if (aliasMatch) return aliasMatch
+    }
+
+    return byColour.get(record.sourceColor) || null
+}
+
+function buildHumanScannedShifts({
+    records,
+    users,
+    departments
+}: {
+    records: HumanRosterRecord[]
+    users: Awaited<ReturnType<typeof prisma.user.findMany>>
+    departments: Awaited<ReturnType<typeof prisma.department.findMany>>
+}) {
+    const usersByName = new Map<string, typeof users>()
+    users.forEach((user) => {
+        const key = user.name.trim().toLowerCase()
+        const existing = usersByName.get(key)
+        if (existing) {
+            existing.push(user)
+        } else {
+            usersByName.set(key, [user])
+        }
+    })
+
+    const scannedShifts: ScannedShift[] = []
+    const foundUserIds = new Set<number>()
+
+    records.forEach((record) => {
+        if (!record.staffName || !record.startTime || !record.endTime) return
+
+        const matches = usersByName.get(record.staffName.trim().toLowerCase()) || []
+        if (matches.length !== 1) return
+
+        const department = getDepartmentMatch(record, departments)
+        if (!department) return
+
+        foundUserIds.add(matches[0].id)
+        scannedShifts.push({
+            userId: matches[0].id,
+            date: record.date,
+            startTime: record.startTime,
+            endTime: record.endTime,
+            departmentId: department.id,
+            isSmod: record.section === 'SMOD' || record.role === 'SMOD'
+        })
+    })
+
+    return { scannedShifts, foundUserIds }
+}
+
+function buildShiftConflicts({
+    scannedShifts,
+    users,
+    leaves,
+    rules,
+    departments
+}: {
+    scannedShifts: ScannedShift[]
+    users: Awaited<ReturnType<typeof prisma.user.findMany>>
+    leaves: Awaited<ReturnType<typeof prisma.leave.findMany>>
+    rules: Awaited<ReturnType<typeof prisma.automationRule.findMany>>
+    departments: Awaited<ReturnType<typeof prisma.department.findMany>>
+}) {
+    const conflicts: ImportConflict[] = []
+    const usersById = new Map(users.map((user) => [user.id, user]))
+
+    scannedShifts.forEach((shift) => {
+        const userLeave = leaves.filter((leave) => leave.userId === shift.userId)
+        const isConflict = userLeave.some((leave) => shift.date >= leave.startDate && shift.date <= leave.endDate)
+
+        if (isConflict) {
+            const user = usersById.get(shift.userId)
+            conflicts.push({
+                type: 'LEAVE_CONFLICT',
+                description: `User ${user?.name} is on leave on ${shift.date}`,
+                date: shift.date,
+                userId: shift.userId
+            })
+        }
+    })
+
+    const importedDates = Array.from(new Set(scannedShifts.map((shift) => shift.date)))
+
+    importedDates.forEach((dateStr) => {
+        const date = parseISO(dateStr)
+        const dow = getDay(date)
+        const dayRules = rules.filter((rule) => rule.day_of_week === dow)
+
+        dayRules.forEach((rule) => {
+            const matchingShiftsForRule = scannedShifts.filter((shift) =>
+                shift.date === dateStr &&
+                shift.departmentId === rule.department_id &&
+                shift.startTime === rule.start_time &&
+                shift.endTime === rule.end_time &&
+                (!rule.is_smod || shift.isSmod)
+            )
+
+            if (matchingShiftsForRule.length < rule.count) {
+                const department = departments.find((candidate) => candidate.id === rule.department_id)
+                conflicts.push({
+                    type: 'RULE_VIOLATION',
+                    description: `Understaffed: ${department?.name} needs ${rule.count} @ ${rule.start_time}-${rule.end_time} on ${dateStr}. Found ${matchingShiftsForRule.length}.`,
+                    date: dateStr
+                })
+            }
+        })
+    })
+
+    return conflicts
+}
+
+async function buildHumanImportReport(
+    workbook: ExcelJS.Workbook,
+    workbookName: string
+): Promise<ImportReport> {
+    const selection = selectHumanScheduleSheet(workbook)
+    if (!selection) {
+        return emptyReport('Invalid file format: no app "Roster" sheet and no human schedule sheet could be detected.')
+    }
+
+    const parsed = parseHumanRosterWorksheet({
+        worksheet: selection.worksheet,
+        workbookName,
+        config: DEFAULT_HUMAN_ROSTER_IMPORT_CONFIG
+    })
+
+    if (!parsed.detectedMonth) {
+        return {
+            ...emptyReport('Could not detect month from human schedule dates.'),
+            source: parsed.source,
+            records: parsed.records,
+            staff: parsed.staff,
+            categories: parsed.categories,
+            warnings: parsed.warnings
+        }
+    }
+
+    const { start: monthStart } = getMonthRosterRange(parsed.detectedMonth)
+    const users = await prisma.user.findMany({
+        include: { skills: true }
+    })
+    const departments = await prisma.department.findMany()
+    const leaves = await prisma.leave.findMany({
+        where: {
+            status: 'APPROVED',
+            OR: [
+                { startDate: { gte: format(monthStart, 'yyyy-MM-dd') } },
+                { endDate: { gte: format(monthStart, 'yyyy-MM-dd') } }
+            ]
+        }
+    })
+    const rules = await prisma.automationRule.findMany()
+
+    const { scannedShifts, foundUserIds } = buildHumanScannedShifts({
+        records: parsed.records,
+        users,
+        departments
+    })
+    const conflicts = buildShiftConflicts({
+        scannedShifts,
+        users,
+        leaves,
+        rules,
+        departments
+    })
+
+    return {
+        success: true,
+        message: `Human schedule import processed from "${selection.worksheet.name}" (${selection.reason})`,
+        detectedMonth: parsed.detectedMonth,
+        coveredDates: parsed.coveredDates,
+        shiftsToCreate: scannedShifts,
+        conflicts,
+        stats: {
+            totalShiftsFound: scannedShifts.length,
+            usersFound: foundUserIds.size
+        },
+        source: parsed.source,
+        records: parsed.records,
+        staff: parsed.staff,
+        categories: parsed.categories,
+        warnings: parsed.warnings
+    }
+}
+
 export async function importRoster(formData: FormData): Promise<ImportReport> {
     await requireAdmin()
 
@@ -254,7 +472,7 @@ export async function importRoster(formData: FormData): Promise<ImportReport> {
         const worksheet = workbook.getWorksheet('Roster')
 
         if (!worksheet) {
-            return emptyReport('Invalid file format: "Roster" sheet not found.')
+            return buildHumanImportReport(workbook, file.name || 'Uploaded workbook')
         }
 
         const workbookMetadata = getWorkbookMetadata(workbook)
