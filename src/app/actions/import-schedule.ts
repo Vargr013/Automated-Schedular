@@ -307,6 +307,17 @@ function buildSavedMappingMap(savedMappings: SavedColourMapping[]) {
     return new Map(savedMappings.map((mapping) => [normaliseColour(mapping.sourceColor), mapping]))
 }
 
+async function getSavedColourMappings(): Promise<SavedColourMapping[]> {
+    try {
+        return await prisma.rosterImportColourMapping.findMany({
+            include: { department: true }
+        })
+    } catch (error) {
+        console.warn('Roster import colour mapping table is unavailable. Falling back to static colour config.', error)
+        return []
+    }
+}
+
 function getDepartmentMatch(
     record: HumanRosterRecord,
     departments: ImportDepartment[],
@@ -560,9 +571,7 @@ async function buildHumanImportReport(
         include: { skills: true }
     })
     const departments = await prisma.department.findMany()
-    const savedMappings = await prisma.rosterImportColourMapping.findMany({
-        include: { department: true }
-    })
+    const savedMappings = await getSavedColourMappings()
     const leaves = await prisma.leave.findMany({
         where: {
             status: 'APPROVED',

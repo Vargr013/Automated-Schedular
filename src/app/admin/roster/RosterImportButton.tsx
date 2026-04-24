@@ -712,17 +712,36 @@ export default function RosterImportButton({ currentMonth }: { currentMonth: str
         if (!file) return
 
         setIsProcessing(true)
-        const formData = new FormData()
-        formData.append('file', file)
 
-        const result = await importRoster(formData)
-        setReport(result)
-        setColourSelections(getInitialColourSelections(result))
-        setActiveTab(result.success ? 'overview' : 'warnings')
-        setIsOpen(true)
-        setIsProcessing(false)
+        try {
+            const formData = new FormData()
+            formData.append('file', file)
 
-        if (fileInputRef.current) fileInputRef.current.value = ''
+            const result = await importRoster(formData)
+            setReport(result)
+            setColourSelections(getInitialColourSelections(result))
+            setActiveTab(result.success ? 'overview' : 'warnings')
+            setIsOpen(true)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to import workbook'
+            setReport({
+                success: false,
+                message,
+                detectedMonth: '',
+                coveredDates: [],
+                shiftsToCreate: [],
+                conflicts: [],
+                stats: {
+                    totalShiftsFound: 0,
+                    usersFound: 0
+                }
+            })
+            setActiveTab('warnings')
+            setIsOpen(true)
+        } finally {
+            setIsProcessing(false)
+            if (fileInputRef.current) fileInputRef.current.value = ''
+        }
     }
 
     const handleColourSelectionChange = (sourceColor: string, departmentId: string) => {
@@ -755,13 +774,19 @@ export default function RosterImportButton({ currentMonth }: { currentMonth: str
     const handleConfirm = async () => {
         if (!report || report.shiftsToCreate.length === 0) return
 
-        setIsProcessing(true)
-        await confirmRosterImport(report.shiftsToCreate, report.detectedMonth || currentMonth, report.coveredDates)
-        setIsProcessing(false)
-        setIsOpen(false)
-        setReport(null)
-        alert(`Roster overwritten successfully for ${report.detectedMonth || currentMonth}.`)
-        router.refresh()
+        try {
+            setIsProcessing(true)
+            await confirmRosterImport(report.shiftsToCreate, report.detectedMonth || currentMonth, report.coveredDates)
+            setIsOpen(false)
+            setReport(null)
+            alert(`Roster overwritten successfully for ${report.detectedMonth || currentMonth}.`)
+            router.refresh()
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to confirm roster import'
+            alert(message)
+        } finally {
+            setIsProcessing(false)
+        }
     }
 
     const handleClose = () => {
